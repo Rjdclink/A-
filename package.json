@@ -1,14 +1,16 @@
 {
   "name": "a-plus-commerce-ai",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.16"
   },
   "scripts": {
     "start": "node src/server.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/server.mjs && node --check src/ai.mjs && node --check src/analytics.mjs && node --check src/security.mjs && npm test"
+    "migrate": "node scripts/migrate-json.mjs",
+    "backup": "node scripts/backup.mjs",
+    "check": "node --check src/server.mjs && node --check src/api.mjs && node --check src/ledger.mjs && node --check src/experiments.mjs && node --check src/shopify.mjs && node --check scripts/migrate-json.mjs && node --check scripts/backup.mjs && npm test"
   }
 }

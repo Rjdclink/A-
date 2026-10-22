@@ -1,52 +1,84 @@
-# A+ — AI Sales, Marketing & Commerce Optimization
-A consent-first, single-instance foundation for revenue measurement and evidence-grounded AI growth experiments.
+# A+ — AI Commerce Intelligence
 
-## Implemented (v0.1)
-- Event ingestion with explicit consent, workspace isolation, bearer token authentication, stable event IDs and duplicate suppression.
-- Visits, views, carts, checkout, orders and lead aggregation with campaign breakdowns.
-- Deterministic lead-intent scoring and funnel recommendations.
-- Vireonix `auto` AI strategist, using **aggregated data only**, same endpoint family as GrowthVeyra.
-- Read-only browser dashboard, human-reviewed advice, zero production publishing.
-- No external runtime dependencies; Node 22+.
+A minimal, privacy-conscious foundation for e-commerce conversion measurement, revenue attribution, controlled A/B experiments, and human-reviewed AI optimization plans.
 
-## Run
-```sh
+**Platform status: engineering prototype, not independently audited, Shopify-approved, or enterprise-certified.**
+
+## At a glance (v0.3)
+- **Minimal interface:** three signals (USD revenue, orders and event-based conversion), one next action, details revealed on request; no advertising clutter.
+- **Durable data:** built-in Node.js SQLite, WAL, indexed 7/30/90-day aggregate queries, exact USD cents, transactionally deduplicated events, configurable retention and a durable 500K-event guardrail.
+- **Workspace boundaries:** separate admin and ingestion tokens per tenant; shared global legacy tokens only have access to the \`default\` workspace. Access tokens are not stored in browser localStorage.
+- **Experiments:** stable HMAC-based A/B assignment with consented exposure, deduplicated purchasing subjects and 14-day attribution; exploratory rate comparison returns "insufficient data" when too small.
+- **Privacy:** HMAC pseudonymous subject keys, deletion/export APIs, customer-redaction tombstones that prevent re-imports, workspace removal, and a queue for merchant data-access requests.
+- **Shopify webhook receiver:** signed raw-body HMAC checks, shop allowlists, paid-order idempotency, mandatory-topic handlers, persistent uninstall tombstones. **No Shopify OAuth, customer privacy approval, installed app subscriptions, or completed merchant export delivery workflow yet.**
+- **Same AI as GrowthVeyra:** Vireonix \`auto\` chat-completions endpoint, only aggregate commerce metrics passed to the model; AI proposals are advisory and never send marketing or purchase ads autonomously.
+- **Testing:** dependency-free Node test suite, HTTP integration tests, migration tests and GitHub Actions workflow configuration. Github Actions may show startup failures due to account configuration; verify locally.
+
+## Local setup
+
+Requires Node.js **22.16+** (the built-in \`node:sqlite\` module in Node 22 remains experimental).
+
+\`\`\`sh
 cp .env.example .env
-# Generate distinct random ADMIN_TOKEN and INGEST_TOKEN (minimum 24 chars).
-# Node 22+ built-in dotenv support:
+# Set ADMIN_TOKEN and INGEST_TOKEN to DIFFERENT random values of 24+ characters.
+# Set PSEUDONYM_KEY to a THIRD stable secret of 24+ characters.
 node --env-file=.env src/server.mjs
-```
-Open http://localhost:3000, enter ADMIN_TOKEN and workspace `default`.
-For a public deployment: HTTPS reverse proxy, private durable DB volume, secret management, backups, rate limits, edge request-size limits and a single application instance.
+# Visit http://127.0.0.1:3000
+\`\`\`
 
-## Ingest a consented event
-```sh
-curl -X POST http://localhost:3000/api/events \
- -H 'Authorization: Bearer YOUR_INGEST_TOKEN' \
- -H 'Content-Type: application/json' \
- -d '{"workspace":"default","id":"checkout-12345","type":"purchase","value":89.95,"currency":"USD","campaign":"search-autumn","consent":true}'
-```
-**Do not put the ingest token in public browser code.** Ingest through a trusted backend or verified integration adapter. Event IDs must be stable across retries. `consent:true` is an assertion by your backend that applicable permission was secured—not a substitute for collecting consent. Ensure retention and deletion obligations are satisfied before live use.
+Avoid using literal placeholder secrets in any live deployment. Production exposure requires explicit \`HOST=0.0.0.0\` behind an HTTPS reverse proxy, secure secret management, durable mounted storage, off-host backup/restore testing and external rate limits. The application intentionally binds localhost by default.
 
-## APIs
-- `GET /health` — health check
-- `POST /api/events` — ingestion token required
-- `GET /api/overview?workspace=default` — admin token required
-- `POST /api/score?workspace=default` — admin token required, body `{"events":["view","cart"],"email":"a@example.com"}`
-- `POST /api/advice?workspace=default` — admin token required, body `{"objective":"Improve conversion"}`
+\`\`\`sh
+npm run check
+npm test
+\`\`\`
 
-## Roadmap / explicit nonclaims
-Not Shopify-certified; no Shopify OAuth, GraphQL sync or verified webhook receivers; no Google Ads integration; no email sends, ad buys, audiences or automatic campaign modifications. Also missing multi-user RBAC, strong data warehouse, event deletion, instrumentation SDK, advanced attribution, experiment statistics, rate limiting and hardened production deployment. These must be implemented and independently verified before enterprise use. Metrics count *events* (not necessarily unique visitors); conversion rate is a naive ratio of purchase events to visit events, not deduplicated shopper cohorts. Revenue combines input values without FX conversion: use one currency per workspace.
+### Upgrading existing JSON data (v0.1/v0.2)
 
-## Research influences
-- Shopify official webhook/privacy API requirements: https://shopify.dev/docs/apps/build/webhooks and https://shopify.dev/docs/api/customer-privacy
-- Google Ads conversion consent requirements: https://developers.google.com/google-ads/api/docs/conversions/getting-started
-- PostHog (funnels, attribution, experiment/feature flags): https://github.com/PostHog/posthog
-- GrowthBook (experiment methodology): https://github.com/growthbook/growthbook
-- Mautic (marketing automation workflows): https://github.com/mautic/mautic
-- Saleor (commerce extensibility/webhooks): https://github.com/saleor/saleor
+**Do not point \`DB_PATH\` at the old \`data/events.json\` file.** Take a verified backup, stop the old application and retain its original JSON file. With new \`DB_PATH=data/a-plus.sqlite\` and stable \`PSEUDONYM_KEY\`:
 
-Conceptual comparisons only. No code from those projects was copied.
+\`\`\`sh
+OLD_DB_PATH=data/events.json node --env-file=.env scripts/migrate-json.mjs
+\`\`\`
 
-## Security and storage iteration (v0.2)
-API requests now have bounded in-memory per-connection throttling (120/minute) and AI advice calls have an additional 8/minute limit. Duplicate event IDs with conflicting content return 409, and storage stops accepting events at the configured `MAX_EVENTS` cap (default 50,000) rather than growing without limit. These are single-worker safeguards, not distributed production protections. Configure `MAX_EVENTS` in the environment, avoid placing this service directly on an untrusted public network, and use a gateway with real client-IP limits. Data retention and deletion are not implemented. GitHub Actions startup failures can indicate repository/account Actions configuration issues; do not interpret these checks as passing until a workflow completes successfully.
+The migration is idempotent and preserves the original file, but it does not substitute for backup verification. An interruption can leave a partially imported SQLite DB; rerun the same command. SQLite WAL uses companion files while active—use the SQLite backup API or stop the application before making consistent filesystem snapshots.
+
+## API essentials
+
+Ingest only from a trusted server, not a browser with an embedded ingestion token. \`consent:true\` means your backend attests that it obtained the requisite analytics permission; it is **not a consent mechanism by itself**.
+
+\`\`\`sh
+curl -X POST http://127.0.0.1:3000/api/events \
+ -H "Authorization: Bearer YOUR_INGEST_TOKEN" -H "Content-Type: application/json" \
+ -d '{"workspace":"default","id":"order_123","type":"purchase","value":32.50,"currency":"USD","consent":true,"campaign":"search","customerId":"opaque-subject-id"}'
+\`\`\`
+
+- \`GET /api/overview?workspace=default&days=30\` (admin; 7/30/90 supported)
+- \`POST /api/score?workspace=default\` (admin; declared behavioral lead score)
+- \`POST /api/advice?workspace=default\` (admin; Vireonix AI)
+- \`POST /api/experiments?workspace=default\` with \`{"id":"checkout_v1"}\` (admin)
+- \`POST /api/experiments/checkout_v1/assign?workspace=default\` with \`{"subjectId":"opaque-subject-id","consent":true}\` (ingestion token)
+- \`GET /api/experiments/checkout_v1?workspace=default\` (admin; 14-day purchase outcome)
+- \`POST /api/privacy/export?workspace=default\` with \`{"subjectId":"opaque-subject-id"}\` (admin)
+- \`POST /api/privacy/erase?workspace=default\` with \`{"subjectId":"opaque-subject-id"}\` (admin)
+- \`GET /api/privacy/requests?workspace=default\` (admin)
+
+The same stable subject identifier must be supplied to experiment assignments and later purchase events, with permission, for attribution to work. The experiment report is exploratory, unadjusted for repeated looks, and **does not establish a causal winner** without pre-registered hypotheses, guardrails and adequate power. Events, not unique shoppers, are used for the dashboard's conversion rate; this is explicitly labeled in the UI.
+
+## Shopify receiver: opt-in only
+
+\`SHOPIFY_SECRET\` is the app shared secret. \`SHOPIFY_SHOPS_JSON\` maps each allowlisted \`store.myshopify.com\` domain to a **dedicated** A+ workspace, e.g. \`{"store.myshopify.com":"default"}\`. No store may share the same workspace. Use \`POST /webhooks/shopify\` for signed deliveries. The optional order import remains **disabled** until \`SHOPIFY_ANALYTICS_BASIS_ACKNOWLEDGED=true\`, which the merchant should set only after documenting lawful processing and privacy notices. Default safe mode acknowledges eligible deliveries without importing orders.
+
+Compliance topics \`customers/data_request\`, \`customers/redact\` and \`shop/redact\` have handlers. Data requests are queued for merchant follow-up—**they are not automatically fulfilled**. A signed \`shop/redact\` or \`app/uninstalled\` erases the mapped workspace and blocks further order import for that shop (until a deliberate reinstall/reset workflow is built). No Shopify public-app or privacy-law compliance claim is made.
+
+## Constraints and valuation
+
+Single SQLite writer, operational security review outstanding, absent billing/OAuth/automated deployment, incomplete Shopify app installation, no marketing API integrations or customer adoption evidence. Test results cannot prove production uptime, scalability or Shopify certification. See [engineering research](docs/RESEARCH.md) for the external references and gaps.
+
+No responsible assessment can claim a greater-than-85% probability of a **$250,000+ code-only sale price** on repository contents alone; that needs independent software due diligence and comparable buyer evidence.
+
+## Verified offline recovery workflow
+
+`npm run backup` creates a consistent SQLite snapshot using Node's backup API, checks `PRAGMA integrity_check`, marks the file 0600, and removes backups older than the configured count. Set `BACKUP_DIR` and `BACKUP_RETAIN` (1–90). Copy completed snapshots to **independent off-host storage** and practice restoring to staging. Live backups are not automatically scheduled; make a secure operational schedule.
+
+A merchant's `customers/data_request` remains **pending** until the operator exports the relevant records, delivers them to the merchant through an independently secure channel, and calls `POST /api/privacy/requests/complete` with `{"requestId":"request:77","deliveryConfirmed":true}` (admin token). A+ does not claim to send the export itself. Pending requests are not removed by normal retention cleanup.
