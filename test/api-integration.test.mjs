@@ -64,6 +64,10 @@ test('Shopify webhook signature, consent-gated order processing and erasure',asy
   assert.equal((await hook(base,'customers/redact',{shop_id:33,shop_domain:'store.myshopify.com',customer:{id:111},orders_to_redact:[100]})).status,200);
   assert.equal((await api(base,'/api/overview?workspace=one',tokens.one.adminToken)).data.metrics.revenue,0);
   assert.equal((await hook(base,'orders/paid',{...p,id:101})).status,202);
+  const guest={id:105,total_price:'4.00',currency:'USD'};
+  assert.equal((await hook(base,'orders/paid',guest)).status,201);
+  assert.equal((await hook(base,'customers/redact',{shop_id:33,shop_domain:'store.myshopify.com',orders_to_redact:[105]})).status,200);
+  assert.equal((await hook(base,'orders/paid',guest)).status,202);
   assert.equal((await hook(base,'customers/data_request',{shop_id:33,shop_domain:'store.myshopify.com',customer:{id:22},data_request:{id:77}})).status,202);
   const pending=(await api(base,'/api/privacy/requests?workspace=one',tokens.one.adminToken)).data.requests;
   assert.equal(pending[0].request_id,'request:77');
