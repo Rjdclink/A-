@@ -96,6 +96,7 @@ export function createHandler({ledger,tenants,adviser,shopify}={}){
     if(![7,30,90].includes(days))fail(400,'Invalid reporting window');
     const metrics=ledger.overview(w,{days});return response(res,200,{metrics,recommendations:recommend(metrics)});
    }
+   if(req.method==='POST'&&url.pathname==='/api/campaigns/spend'){const input=await parseJSON(req);return response(res,200,ledger.recordSpend(w,input));}
    if(req.method==='POST'&&url.pathname==='/api/score'){
     const input=await parseJSON(req);return response(res,200,{score:scoreLead(input)});
    }
