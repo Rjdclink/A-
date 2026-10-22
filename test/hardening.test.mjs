@@ -81,3 +81,11 @@ test('event quota recovers capacity after privacy deletion and retention',()=>{
  assert.equal(l.eraseOld({now:200*86400000,days:180}),1);
  assert.equal(l.add('shop','third',{type:'visit',consent:true}).status,'created');l.close();
 });
+test('Shopify privacy can erase and tombstone guest orders without customer IDs',()=>{
+ const l=new Ledger(':memory:',{pseudonymKey:key});
+ const id='shopify:store.myshopify.com:123';
+ l.add('one',id,{type:'purchase',value:22,consent:true});
+ assert.equal(l.redactShopifyOrders('one','store.myshopify.com',[123]),1);
+ assert.equal(l.add('one',id,{type:'purchase',value:22,consent:true}).status,'suppressed');
+ assert.equal(l.overview('one').purchases,0);l.close();
+});
