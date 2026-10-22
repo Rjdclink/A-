@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS redacted_customers (
  workspace TEXT NOT NULL, subject_hash TEXT NOT NULL, redacted_at INTEGER NOT NULL,
  PRIMARY KEY(workspace,subject_hash)
 );
+CREATE TABLE IF NOT EXISTS redacted_orders (
+ workspace TEXT NOT NULL, id TEXT NOT NULL, redacted_at INTEGER NOT NULL,
+ PRIMARY KEY(workspace,id)
+);
 CREATE TABLE IF NOT EXISTS disabled_shops (
  workspace TEXT NOT NULL, domain TEXT NOT NULL, disabled_at INTEGER NOT NULL,
  PRIMARY KEY(workspace,domain)
@@ -63,6 +67,7 @@ export class Ledger{
   const cents=e.type==='purchase'?amountCents(e.value):0;
   const subject=e.customerId?this.hash(workspace,e.customerId):null;
   if(subject&&this.db.prepare('SELECT 1 FROM redacted_customers WHERE workspace=? AND subject_hash=?').get(workspace,subject))return {status:'suppressed'};
+  if(this.db.prepare('SELECT 1 FROM redacted_orders WHERE workspace=? AND id=?').get(workspace,id))return {status:'suppressed'};
   const digest=createHash('sha256').update(JSON.stringify([e.type,cents,e.currency,e.campaign,subject,e.consent])).digest('hex');
   this.db.exec('BEGIN IMMEDIATE');
   try{
@@ -82,7 +87,20 @@ export class Ledger{
   return {visits:count.visit,views:count.view,carts:count.cart,checkouts:count.checkout,purchases:count.purchase,leads:count.lead,revenue:cents/100,currency:'USD',windowDays:days,conversionRate:count.visit?Math.round(count.purchase/count.visit*10000)/100:null,byCampaign};
  }
  eraseCustomer(workspace,subject){validateWorkspace(workspace);const hash=this.hash(workspace,subject);this.db.exec('BEGIN IMMEDIATE');try{this.db.prepare('INSERT OR IGNORE INTO redacted_customers(workspace,subject_hash,redacted_at) VALUES(?,?,?)').run(workspace,hash,Date.now());const deleted=this.db.prepare('DELETE FROM events WHERE workspace=? AND customer_hash=?').run(workspace,hash).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=? AND subject_hash=?').run(workspace,hash);this.db.exec('COMMIT');this.eventCount-=deleted;return deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
- eraseWorkspace(workspace,{shopDomain}={}){validateWorkspace(workspace);this.db.exec('BEGIN IMMEDIATE');try{if(shopDomain)this.db.prepare('INSERT OR IGNORE INTO disabled_shops(workspace,domain,disabled_at) VALUES(?,?,?)').run(workspace,shopDomain,Date.now());this.db.prepare('DELETE FROM redacted_customers WHERE workspace=?').run(workspace);const deleted=this.db.prepare('DELETE FROM events WHERE workspace=?').run(workspace).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM experiments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM privacy_requests WHERE workspace=?').run(workspace);this.db.exec('COMMIT');this.eventCount-=deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ eraseWorkspace(workspace,{shopDomain}={}){validateWorkspace(workspace);this.db.exec('BEGIN IMMEDIATE');try{if(shopDomain)this.db.prepare('INSERT OR IGNORE INTO disabled_shops(workspace,domain,disabled_at) VALUES(?,?,?)').run(workspace,shopDomain,Date.now());this.db.prepare('DELETE FROM redacted_customers WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM redacted_orders WHERE workspace=?').run(workspace);const deleted=this.db.prepare('DELETE FROM events WHERE workspace=?').run(workspace).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM experiments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM privacy_requests WHERE workspace=?').run(workspace);this.db.exec('COMMIT');this.eventCount-=deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ redactShopifyOrders(workspace,domain,orderIds){
+  validateWorkspace(workspace);
+  if(!Array.isArray(orderIds)||orderIds.length>1000)fail(400,'Invalid Shopify redaction order list');
+  const ids=new Set(orderIds.map(value=>{
+   if(!['number','string'].includes(typeof value)||!Number.isSafeInteger(Number(value))||Number(value)<1)fail(400,'Invalid Shopify order reference');
+   return 'shopify:'+domain+':'+String(value);
+  }));
+  this.db.exec('BEGIN IMMEDIATE');let removed=0;
+  try{
+   for(const id of ids){this.db.prepare('INSERT OR IGNORE INTO redacted_orders(workspace,id,redacted_at) VALUES(?,?,?)').run(workspace,id,Date.now());removed+=this.db.prepare('DELETE FROM events WHERE workspace=? AND id=?').run(workspace,id).changes;}
+   this.db.exec('COMMIT');this.eventCount-=removed;return removed;
+  }catch(e){this.db.exec('ROLLBACK');throw e;}
+ }
  shopActive(workspace,domain){validateWorkspace(workspace);return !this.db.prepare('SELECT 1 FROM disabled_shops WHERE workspace=? AND domain=?').get(workspace,domain);}
  eraseOld({now=Date.now(),days=180}={}){if(!Number.isInteger(days)||days<30||days>730)fail(400,'Invalid retention period');const edge=now-days*DAY;this.db.exec('BEGIN IMMEDIATE');try{const n=this.db.prepare('DELETE FROM events WHERE occurred_at<?').run(edge).changes;this.db.prepare('DELETE FROM assignments WHERE assigned_at<?').run(edge);this.db.prepare("DELETE FROM privacy_requests WHERE status='completed' AND created_at<?").run(edge);this.db.exec('COMMIT');this.eventCount-=n;return n;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  createExperiment(workspace,id,now=Date.now()){validateWorkspace(workspace);safeId(id);if(id.length>60)fail(400,'Experiment name too long');const out=this.db.prepare('INSERT OR IGNORE INTO experiments(workspace,id,created_at) VALUES (?,?,?)').run(workspace,id,now);return out.changes?'created':'existing';}
