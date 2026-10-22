@@ -4,6 +4,7 @@ export function validateEvent(e){
  if(e.consent!==true)throw Error('Explicit analytics consent required');
  if(e.value!==undefined&&(!Number.isFinite(e.value)||e.value<0||e.value>1e9))throw Error('Invalid value');
  if(e.currency!==undefined&&!/^[A-Z]{3}$/.test(e.currency))throw Error('Invalid currency');
+ if(e.type==='purchase'&&e.currency!==undefined&&e.currency!=='USD')throw Error('Only USD purchase events supported until currency conversion is implemented');
  if(e.customerId!==undefined&&(typeof e.customerId!=='string'||e.customerId.length>120))throw Error('Invalid customer ID');
  if(e.campaign!==undefined&&(typeof e.campaign!=='string'||e.campaign.length>120))throw Error('Invalid campaign');
  return {type:e.type,value:e.value??0,currency:e.currency??'USD',customerId:e.customerId??null,campaign:e.campaign??'organic',consent:true};
@@ -18,7 +19,7 @@ export function summarize(events,workspace){
  const count=type=>items.filter(e=>e.type===type).length;
  const purchases=items.filter(e=>e.type==='purchase');
  const revenue=Math.round(purchases.reduce((n,e)=>n+e.value,0)*100)/100;
- const byCampaign={};
+ const byCampaign=Object.create(null);
  for(const e of items){const name=e.campaign||'organic';const c=byCampaign[name]??={visits:0,carts:0,purchases:0,revenue:0};if(e.type==='visit')c.visits++;if(e.type==='cart')c.carts++;if(e.type==='purchase'){c.purchases++;c.revenue=Math.round((c.revenue+e.value)*100)/100;}}
  return {visits:count('visit'),views:count('view'),carts:count('cart'),checkouts:count('checkout'),purchases:purchases.length,leads:count('lead'),revenue,conversionRate:count('visit')?Math.round(purchases.length/count('visit')*10000)/100:null,byCampaign};
 }
