@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS redacted_customers (
  workspace TEXT NOT NULL, subject_hash TEXT NOT NULL, redacted_at INTEGER NOT NULL,
  PRIMARY KEY(workspace,subject_hash)
 );
+CREATE TABLE IF NOT EXISTS campaign_spend (
+ workspace TEXT NOT NULL, campaign TEXT NOT NULL, day_utc INTEGER NOT NULL,
+ cents INTEGER NOT NULL, clicks INTEGER NOT NULL, impressions INTEGER NOT NULL,
+ PRIMARY KEY(workspace,campaign,day_utc)
+);
+CREATE INDEX IF NOT EXISTS campaign_spend_by_day ON campaign_spend(workspace,day_utc);
 CREATE TABLE IF NOT EXISTS redacted_orders (
  workspace TEXT NOT NULL, id TEXT NOT NULL, redacted_at INTEGER NOT NULL,
  PRIMARY KEY(workspace,id)
@@ -80,14 +86,30 @@ export class Ledger{
  }
  overview(workspace,{now=Date.now(),days=30}={}){
   validateWorkspace(workspace);if(!Number.isInteger(days)||days<1||days>366)fail(400,'Invalid reporting window');
-  const rows=this.db.prepare('SELECT type,campaign,COUNT(*) AS n,SUM(cents) AS cents FROM events WHERE workspace=? AND occurred_at>=? AND occurred_at<=? GROUP BY type,campaign').all(workspace,now-days*DAY,now);
+  const start=Math.floor(now/DAY)*DAY-(days-1)*DAY;
+  const rows=this.db.prepare('SELECT type,campaign,COUNT(*) AS n,SUM(cents) AS cents FROM events WHERE workspace=? AND occurred_at>=? AND occurred_at<=? GROUP BY type,campaign').all(workspace,start,now);
   const count={visit:0,view:0,cart:0,checkout:0,purchase:0,lead:0};const byCampaign=Object.create(null);let cents=0;
   for(const row of rows){count[row.type]+=row.n;const c=byCampaign[row.campaign]??={visits:0,carts:0,purchases:0,revenue:0};if(row.type==='visit')c.visits+=row.n;if(row.type==='cart')c.carts+=row.n;if(row.type==='purchase'){c.purchases+=row.n;c.revenue+=row.cents/100;cents+=row.cents;}}
-  for(const c of Object.values(byCampaign))c.revenue=Math.round(c.revenue*100)/100;
+  for(const c of Object.values(byCampaign)){c.revenue=Math.round(c.revenue*100)/100;c.spend=null;c.roas=null;c.cpa=null;c.ctr=null;}
+  const spends=this.db.prepare('SELECT campaign,SUM(cents) AS cents,SUM(clicks) AS clicks,SUM(impressions) AS impressions FROM campaign_spend WHERE workspace=? AND day_utc>=? AND day_utc<=? GROUP BY campaign').all(workspace,start,now);
+  for(const row of spends){const c=byCampaign[row.campaign]??={visits:0,carts:0,purchases:0,revenue:0};c.spend=row.cents/100;c.roas=row.cents>0?Math.round(c.revenue/(row.cents/100)*100)/100:null;c.cpa=c.purchases>0?Math.round(c.spend/c.purchases*100)/100:null;c.ctr=row.impressions>0?Math.round(row.clicks/row.impressions*10000)/100:null;}
+ 
   return {visits:count.visit,views:count.view,carts:count.cart,checkouts:count.checkout,purchases:count.purchase,leads:count.lead,revenue:cents/100,currency:'USD',windowDays:days,conversionRate:count.visit?Math.round(count.purchase/count.visit*10000)/100:null,byCampaign};
  }
+ recordSpend(workspace,{campaign,date,spend,clicks=0,impressions=0}={}){
+  validateWorkspace(workspace);
+  if(typeof campaign!=='string'||!campaign.trim()||campaign.length>120)fail(400,'Invalid campaign');
+  if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date))fail(400,'Invalid spend date');
+  const day=Date.parse(date+'T00:00:00.000Z');
+  if(!Number.isFinite(day)||new Date(day).toISOString().slice(0,10)!==date)fail(400,'Invalid spend date');
+  if(!Number.isFinite(spend)||spend<0||spend>1e9)fail(400,'Invalid spend amount');
+  const cents=amountCents(spend);
+  if(!Number.isSafeInteger(clicks)||clicks<0||clicks>1e9||!Number.isSafeInteger(impressions)||impressions<0||impressions>1e9)fail(400,'Invalid campaign counters');
+  this.db.prepare('INSERT INTO campaign_spend(workspace,campaign,day_utc,cents,clicks,impressions) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace,campaign,day_utc) DO UPDATE SET cents=excluded.cents,clicks=excluded.clicks,impressions=excluded.impressions').run(workspace,campaign,day,cents,clicks,impressions);
+  return {recorded:true};
+ }
  eraseCustomer(workspace,subject){validateWorkspace(workspace);const hash=this.hash(workspace,subject);this.db.exec('BEGIN IMMEDIATE');try{this.db.prepare('INSERT OR IGNORE INTO redacted_customers(workspace,subject_hash,redacted_at) VALUES(?,?,?)').run(workspace,hash,Date.now());const deleted=this.db.prepare('DELETE FROM events WHERE workspace=? AND customer_hash=?').run(workspace,hash).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=? AND subject_hash=?').run(workspace,hash);this.db.exec('COMMIT');this.eventCount-=deleted;return deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
- eraseWorkspace(workspace,{shopDomain}={}){validateWorkspace(workspace);this.db.exec('BEGIN IMMEDIATE');try{if(shopDomain)this.db.prepare('INSERT OR IGNORE INTO disabled_shops(workspace,domain,disabled_at) VALUES(?,?,?)').run(workspace,shopDomain,Date.now());this.db.prepare('DELETE FROM redacted_customers WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM redacted_orders WHERE workspace=?').run(workspace);const deleted=this.db.prepare('DELETE FROM events WHERE workspace=?').run(workspace).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM experiments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM privacy_requests WHERE workspace=?').run(workspace);this.db.exec('COMMIT');this.eventCount-=deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ eraseWorkspace(workspace,{shopDomain}={}){validateWorkspace(workspace);this.db.exec('BEGIN IMMEDIATE');try{if(shopDomain)this.db.prepare('INSERT OR IGNORE INTO disabled_shops(workspace,domain,disabled_at) VALUES(?,?,?)').run(workspace,shopDomain,Date.now());this.db.prepare('DELETE FROM redacted_customers WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM redacted_orders WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM campaign_spend WHERE workspace=?').run(workspace);const deleted=this.db.prepare('DELETE FROM events WHERE workspace=?').run(workspace).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM experiments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM privacy_requests WHERE workspace=?').run(workspace);this.db.exec('COMMIT');this.eventCount-=deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  redactShopifyOrders(workspace,domain,orderIds){
   validateWorkspace(workspace);
   if(!Array.isArray(orderIds)||orderIds.length>1000)fail(400,'Invalid Shopify redaction order list');
@@ -102,7 +124,7 @@ export class Ledger{
   }catch(e){this.db.exec('ROLLBACK');throw e;}
  }
  shopActive(workspace,domain){validateWorkspace(workspace);return !this.db.prepare('SELECT 1 FROM disabled_shops WHERE workspace=? AND domain=?').get(workspace,domain);}
- eraseOld({now=Date.now(),days=180}={}){if(!Number.isInteger(days)||days<30||days>730)fail(400,'Invalid retention period');const edge=now-days*DAY;this.db.exec('BEGIN IMMEDIATE');try{const n=this.db.prepare('DELETE FROM events WHERE occurred_at<?').run(edge).changes;this.db.prepare('DELETE FROM assignments WHERE assigned_at<?').run(edge);this.db.prepare("DELETE FROM privacy_requests WHERE status='completed' AND created_at<?").run(edge);this.db.exec('COMMIT');this.eventCount-=n;return n;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ eraseOld({now=Date.now(),days=180}={}){if(!Number.isInteger(days)||days<30||days>730)fail(400,'Invalid retention period');const edge=now-days*DAY;this.db.exec('BEGIN IMMEDIATE');try{const n=this.db.prepare('DELETE FROM events WHERE occurred_at<?').run(edge).changes;this.db.prepare('DELETE FROM assignments WHERE assigned_at<?').run(edge);this.db.prepare("DELETE FROM privacy_requests WHERE status='completed' AND created_at<?").run(edge);this.db.prepare('DELETE FROM campaign_spend WHERE day_utc<?').run(edge);this.db.exec('COMMIT');this.eventCount-=n;return n;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  createExperiment(workspace,id,now=Date.now()){validateWorkspace(workspace);safeId(id);if(id.length>60)fail(400,'Experiment name too long');const out=this.db.prepare('INSERT OR IGNORE INTO experiments(workspace,id,created_at) VALUES (?,?,?)').run(workspace,id,now);return out.changes?'created':'existing';}
  assign(workspace,experiment,subject,{consent,now=Date.now()}={}){
   validateWorkspace(workspace);safeId(experiment);if(consent!==true)fail(400,'Experiment assignment requires consent');if(typeof subject!=='string'||subject.length<1||subject.length>120)fail(400,'Invalid subject token');
