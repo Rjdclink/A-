@@ -37,6 +37,19 @@ test('workspace authorization, dedupe conflict, report windows and analytics pro
  }finally{await h.stop();}
 });
 
+test('advertising spend reports require admin auth and expose indicative ROAS',async()=>{
+ const h=makeHarness();const base=await h.start();
+ try{
+  const spend={campaign:'search',date:new Date().toISOString().slice(0,10),spend:10,clicks:40,impressions:1000};
+  assert.equal((await api(base,'/api/campaigns/spend?workspace=one',tokens.one.ingestToken,'POST',spend)).status,401);
+  assert.equal((await api(base,'/api/campaigns/spend?workspace=one',tokens.one.adminToken,'POST',spend)).status,200);
+  await api(base,'/api/events',tokens.one.ingestToken,'POST',{workspace:'one',id:'checkout_1',type:'purchase',value:30,consent:true,campaign:'search'});
+  const result=await api(base,'/api/overview?workspace=one',tokens.one.adminToken);
+  assert.equal(result.data.metrics.byCampaign.search.spend,10);
+  assert.equal(result.data.metrics.byCampaign.search.roas,3);
+ }finally{await h.stop();}
+});
+
 test('deterministic assignments and 14-day attribution, protected by consent',async()=>{
  const h=makeHarness();const base=await h.start();
  try{
