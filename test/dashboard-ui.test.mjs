@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';
+test('minimal dashboard prioritizes three metrics with progressive disclosure',async()=>{const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');assert.match(html,/id="cards"/);assert.match(html,/id="insightDetails"/);assert.match(html,/<details/);assert.match(html,/id="opportunity"/);assert.doesNotMatch(html,/<pre/);});
+test('frontend renders external metric values as text, never HTML',async()=>{const js=await readFile(new URL('../public/app.js',import.meta.url),'utf8');assert.match(js,/textContent/);assert.doesNotMatch(js,/innerHTML/);assert.doesNotMatch(js,/sessionStorage|localStorage/);});
