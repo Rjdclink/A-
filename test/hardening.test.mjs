@@ -72,3 +72,12 @@ test('event capacity cannot be disabled by invalid environment values',()=>{
  assert.throws(()=>l.add('shop','second',{type:'visit',consent:true}),e=>e.status===507);
  l.close();
 });
+test('event quota recovers capacity after privacy deletion and retention',()=>{
+ const l=new Ledger(':memory:',{pseudonymKey:key,maxEvents:1});
+ l.add('shop','first',{type:'purchase',value:5,consent:true,customerId:'a'},1000);
+ assert.throws(()=>l.add('shop','next',{type:'visit',consent:true}),e=>e.status===507);
+ assert.equal(l.eraseCustomer('shop','a'),1);
+ assert.equal(l.add('shop','next',{type:'visit',consent:true},500).status,'created');
+ assert.equal(l.eraseOld({now:200*86400000,days:180}),1);
+ assert.equal(l.add('shop','third',{type:'visit',consent:true}).status,'created');l.close();
+});
