@@ -47,3 +47,6 @@ Not Shopify-certified; no Shopify OAuth, GraphQL sync or verified webhook receiv
 - Saleor (commerce extensibility/webhooks): https://github.com/saleor/saleor
 
 Conceptual comparisons only. No code from those projects was copied.
+
+## Security and storage iteration (v0.2)
+API requests now have bounded in-memory per-connection throttling (120/minute) and AI advice calls have an additional 8/minute limit. Duplicate event IDs with conflicting content return 409, and storage stops accepting events at the configured `MAX_EVENTS` cap (default 50,000) rather than growing without limit. These are single-worker safeguards, not distributed production protections. Configure `MAX_EVENTS` in the environment, avoid placing this service directly on an untrusted public network, and use a gateway with real client-IP limits. Data retention and deletion are not implemented. GitHub Actions startup failures can indicate repository/account Actions configuration issues; do not interpret these checks as passing until a workflow completes successfully.
