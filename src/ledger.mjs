@@ -53,6 +53,7 @@ export class Ledger{
   this.db.exec('PRAGMA foreign_keys=ON;');
   if(dbPath!==':memory:')this.db.exec('PRAGMA journal_mode=WAL;');
   this.db.exec(schema);
+  this.eventCount=this.db.prepare('SELECT COUNT(*) AS n FROM events').get().n;
  }
  close(){this.db.close();}
  hash(workspace,subject){return createHmac('sha256',this.key).update(JSON.stringify([workspace,String(subject)])).digest('hex');}
@@ -67,9 +68,9 @@ export class Ledger{
   try{
    const existing=this.db.prepare('SELECT digest FROM events WHERE workspace=? AND id=?').get(workspace,id);
    if(existing){if(existing.digest!==digest)fail(409,'Event ID reused with different details');this.db.exec('COMMIT');return {status:'duplicate'};}
-   if(this.db.prepare('SELECT COUNT(*) AS n FROM events').get().n>=this.maxEvents)fail(507,'Event capacity reached');
+   if(this.eventCount>=this.maxEvents)fail(507,'Event capacity reached');
    this.db.prepare('INSERT INTO events(workspace,id,type,cents,campaign,customer_hash,digest,occurred_at) VALUES (?,?,?,?,?,?,?,?)').run(workspace,id,e.type,cents,e.campaign,subject,digest,now);
-   this.db.exec('COMMIT');return {status:'created'};
+   this.db.exec('COMMIT');this.eventCount++;return {status:'created'};
   }catch(err){this.db.exec('ROLLBACK');throw err;}
  }
  overview(workspace,{now=Date.now(),days=30}={}){
@@ -80,10 +81,10 @@ export class Ledger{
   for(const c of Object.values(byCampaign))c.revenue=Math.round(c.revenue*100)/100;
   return {visits:count.visit,views:count.view,carts:count.cart,checkouts:count.checkout,purchases:count.purchase,leads:count.lead,revenue:cents/100,currency:'USD',windowDays:days,conversionRate:count.visit?Math.round(count.purchase/count.visit*10000)/100:null,byCampaign};
  }
- eraseCustomer(workspace,subject){validateWorkspace(workspace);const hash=this.hash(workspace,subject);this.db.exec('BEGIN IMMEDIATE');try{this.db.prepare('INSERT OR IGNORE INTO redacted_customers(workspace,subject_hash,redacted_at) VALUES(?,?,?)').run(workspace,hash,Date.now());const deleted=this.db.prepare('DELETE FROM events WHERE workspace=? AND customer_hash=?').run(workspace,hash).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=? AND subject_hash=?').run(workspace,hash);this.db.exec('COMMIT');return deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
- eraseWorkspace(workspace,{shopDomain}={}){validateWorkspace(workspace);this.db.exec('BEGIN IMMEDIATE');try{if(shopDomain)this.db.prepare('INSERT OR IGNORE INTO disabled_shops(workspace,domain,disabled_at) VALUES(?,?,?)').run(workspace,shopDomain,Date.now());this.db.prepare('DELETE FROM redacted_customers WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM events WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM assignments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM experiments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM privacy_requests WHERE workspace=?').run(workspace);this.db.exec('COMMIT');}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ eraseCustomer(workspace,subject){validateWorkspace(workspace);const hash=this.hash(workspace,subject);this.db.exec('BEGIN IMMEDIATE');try{this.db.prepare('INSERT OR IGNORE INTO redacted_customers(workspace,subject_hash,redacted_at) VALUES(?,?,?)').run(workspace,hash,Date.now());const deleted=this.db.prepare('DELETE FROM events WHERE workspace=? AND customer_hash=?').run(workspace,hash).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=? AND subject_hash=?').run(workspace,hash);this.db.exec('COMMIT');this.eventCount-=deleted;return deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ eraseWorkspace(workspace,{shopDomain}={}){validateWorkspace(workspace);this.db.exec('BEGIN IMMEDIATE');try{if(shopDomain)this.db.prepare('INSERT OR IGNORE INTO disabled_shops(workspace,domain,disabled_at) VALUES(?,?,?)').run(workspace,shopDomain,Date.now());this.db.prepare('DELETE FROM redacted_customers WHERE workspace=?').run(workspace);const deleted=this.db.prepare('DELETE FROM events WHERE workspace=?').run(workspace).changes;this.db.prepare('DELETE FROM assignments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM experiments WHERE workspace=?').run(workspace);this.db.prepare('DELETE FROM privacy_requests WHERE workspace=?').run(workspace);this.db.exec('COMMIT');this.eventCount-=deleted;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  shopActive(workspace,domain){validateWorkspace(workspace);return !this.db.prepare('SELECT 1 FROM disabled_shops WHERE workspace=? AND domain=?').get(workspace,domain);}
- eraseOld({now=Date.now(),days=180}={}){if(!Number.isInteger(days)||days<30||days>730)fail(400,'Invalid retention period');const edge=now-days*DAY;this.db.exec('BEGIN IMMEDIATE');try{const n=this.db.prepare('DELETE FROM events WHERE occurred_at<?').run(edge).changes;this.db.prepare('DELETE FROM assignments WHERE assigned_at<?').run(edge);this.db.prepare("DELETE FROM privacy_requests WHERE status='completed' AND created_at<?").run(edge);this.db.exec('COMMIT');return n;}catch(e){this.db.exec('ROLLBACK');throw e;}}
+ eraseOld({now=Date.now(),days=180}={}){if(!Number.isInteger(days)||days<30||days>730)fail(400,'Invalid retention period');const edge=now-days*DAY;this.db.exec('BEGIN IMMEDIATE');try{const n=this.db.prepare('DELETE FROM events WHERE occurred_at<?').run(edge).changes;this.db.prepare('DELETE FROM assignments WHERE assigned_at<?').run(edge);this.db.prepare("DELETE FROM privacy_requests WHERE status='completed' AND created_at<?").run(edge);this.db.exec('COMMIT');this.eventCount-=n;return n;}catch(e){this.db.exec('ROLLBACK');throw e;}}
  createExperiment(workspace,id,now=Date.now()){validateWorkspace(workspace);safeId(id);if(id.length>60)fail(400,'Experiment name too long');const out=this.db.prepare('INSERT OR IGNORE INTO experiments(workspace,id,created_at) VALUES (?,?,?)').run(workspace,id,now);return out.changes?'created':'existing';}
  assign(workspace,experiment,subject,{consent,now=Date.now()}={}){
   validateWorkspace(workspace);safeId(experiment);if(consent!==true)fail(400,'Experiment assignment requires consent');if(typeof subject!=='string'||subject.length<1||subject.length>120)fail(400,'Invalid subject token');
