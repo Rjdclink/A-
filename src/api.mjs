@@ -56,13 +56,14 @@ export function createHandler({ledger,tenants,adviser,shopify}={}){
      if(data.shop_domain!==domain||!Number.isSafeInteger(Number(data.shop_id)))fail(400,'Shopify shop identity mismatch');
     }
     if(topic==='app/uninstalled'&&data.myshopify_domain!==domain)fail(400,'Shopify shop identity mismatch');
-    if(topic==='customers/redact'&&(!Array.isArray(data.orders_to_redact)||data.customer?.id==null))fail(400,'Invalid customer redaction payload');
+    if(topic==='customers/redact'&&!Array.isArray(data.orders_to_redact))fail(400,'Invalid customer redaction payload');
     if(topic==='customers/data_request'&&(data.customer?.id==null||data.data_request?.id==null))fail(400,'Invalid customer data request');
     if(topic==='shop/redact'||topic==='app/uninstalled'){
      ledger.eraseWorkspace(workspace,{shopDomain:domain});return response(res,200,{received:true});
     }
     if(topic==='customers/redact'){
      if(data.customer?.id!=null)ledger.eraseCustomer(workspace,String(data.customer.id));
+     ledger.redactShopifyOrders(workspace,domain,data.orders_to_redact);
      return response(res,200,{received:true});
     }
     if(topic==='customers/data_request'){
