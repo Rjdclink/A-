@@ -82,3 +82,16 @@ No responsible assessment can claim a greater-than-85% probability of a **$250,0
 `npm run backup` creates a consistent SQLite snapshot using Node's backup API, checks `PRAGMA integrity_check`, marks the file 0600, and removes backups older than the configured count. Set `BACKUP_DIR` and `BACKUP_RETAIN` (1–90). Copy completed snapshots to **independent off-host storage** and practice restoring to staging. Live backups are not automatically scheduled; make a secure operational schedule.
 
 A merchant's `customers/data_request` remains **pending** until the operator exports the relevant records, delivers them to the merchant through an independently secure channel, and calls `POST /api/privacy/requests/complete` with `{"requestId":"request:77","deliveryConfirmed":true}` (admin token). A+ does not claim to send the export itself. Pending requests are not removed by normal retention cleanup.
+
+
+## Paid campaign measurement (optional)
+
+Supply authorized daily spend totals with `POST /api/campaigns/spend?workspace=default` using the workspace **admin** token:
+
+```json
+{"campaign":"search","date":"2026-10-22","spend":25.00,"clicks":50,"impressions":1000}
+```
+
+Repeated uploads with the same workspace, campaign and UTC date **replace**, rather than double-count, the daily spend. The overview's expandable campaign details include indicative attributed ROAS, CPA and CTR when measured. ROAS remains `null` if spend is missing. Reporting windows use UTC calendar days and do not account for refunds, cross-channel attribution, campaign spend import latency or causal incrementality. Never present these figures as verified profit or return on investment.
+
+Shopify customer redaction also honors `orders_to_redact` for guest purchases, keeping hashed/order tombstones so replayed paid-order deliveries cannot restore erased records.
