@@ -3,8 +3,18 @@
  * Stores only intentionally reduced operational signals, never customer identifiers,
  * access tokens, raw scanned HTML, provider credentials, or email bodies.
  */
+export function neonTLSConnectionString(connectionString){
+ if(typeof connectionString!=='string'||!connectionString)return connectionString;
+ try{
+  const url=new URL(connectionString);
+  if(!['postgres:','postgresql:'].includes(url.protocol))return connectionString;
+  if(!url.hostname.toLowerCase().endsWith('.neon.tech'))return connectionString;
+  url.searchParams.set('sslmode','verify-full');
+  return url.toString();
+ }catch{return connectionString;}
+}
 export function createNeonIntegration({env=process.env,Pool}={}){
- const url=env.NEON_DATABASE_URL||env.DATABASE_URL;
+ const url=neonTLSConnectionString(env.NEON_DATABASE_URL||env.DATABASE_URL);
  if(!url)return {
   configured:false,record:async()=>({stored:false}),
   status:async()=>({connected:false,configured:false,events:0}),
