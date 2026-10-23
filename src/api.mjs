@@ -23,8 +23,9 @@ function configureShopify(options){
  const safe=Object.create(null),used=new Set();for(const [domain,workspace]of Object.entries(shops)){validateShopDomain(domain);validateWorkspace(workspace);if(used.has(workspace))throw Error('Each Shopify shop must have its own workspace');used.add(workspace);safe[domain]=workspace;}
  return {secret,shops:safe,allowOrders};
 }
-export function createHandler({ledger,tenants,adviser,shopify,unified}={}){
+export function createHandler({ledger,tenants,adviser,shopify,unified,publicDashboard=false,publicWorkspace='default'}={}){
  if(!ledger||!tenants||!adviser)throw Error('Missing server dependencies');
+ if(publicDashboard&&(!Object.hasOwn(tenants,publicWorkspace)||validateWorkspace(publicWorkspace)!==publicWorkspace))throw Error('Public workspace is not configured');
  const shop=configureShopify(shopify);
  const requests=createLimiter({max:150,windowMs:60000,maxKeys:3000});
  const aiRequests=createLimiter({max:8,windowMs:60000,maxKeys:3000});
@@ -36,9 +37,21 @@ export function createHandler({ledger,tenants,adviser,shopify,unified}={}){
    if((req.method==='GET'||req.method==='HEAD')&&url.pathname==='/health'){
     ledger.db.prepare('SELECT 1').get();return response(res,200,{status:'ok'});
    }
+   if(req.method==='GET'&&url.pathname==='/api/dashboard-config')return response(res,200,{public:Boolean(publicDashboard),workspace:publicDashboard?publicWorkspace:null});
    if(req.method==='GET'&&(url.pathname==='/'||url.pathname==='/app.js')){
     const isScript=url.pathname==='/app.js';const file=isScript?'../public/app.js':'../public/index.html';
-    const output=await readFile(new URL(file,import.meta.url));
+    let output=await readFile(new URL(file,import.meta.url));
+    if(!isScript&&publicDashboard){
+     let html=output.toString('utf8');
+     html=html.replace(/<button class="pill" id="toggleWorkspace"[^>]*>[\s\S]*?<\/button>/,'');
+     html=html.replace(/<section class="panel hidden" id="workspacePanel"[^>]*>[\s\S]*?<\/section>/,'');
+     html=html.replace(/<button class="secondary" data-action="openWorkspace"[^>]*>[\s\S]*?<\/button>/,'');
+     html=html.replace('Connect workspace</span>','Loading live data</span>');
+     html=html.replace('Connect your workspace for your most important next growth opportunity.','Live business insights appear here when data is available.');
+     html=html.replace('<h2>Connection</h2><p class="muted">A+ administrator tokens are never stored in local storage or session storage.</p>',
+       '<h2>Dashboard access</h2><p class="muted">Open this website to use the live dashboard directly.</p>');
+     output=Buffer.from(html);
+    }
     const headers={...securityHeaders,'content-type':isScript?'text/javascript; charset=utf-8':'text/html; charset=utf-8'};
     if(!isScript)headers['content-security-policy']="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'";
     res.writeHead(200,headers);res.end(output);return;
@@ -70,6 +83,11 @@ export function createHandler({ledger,tenants,adviser,shopify,unified}={}){
       };
      })();`;
      html=html.replace('</head>','<script>'+bootstrap+'</script></head>');
+     if(publicDashboard){
+      html=html.replace(/GrowthVeyra AI/g,'A+ Automation Studio').replace(/GROWTHVEYRA AI/g,'A+ AUTOMATION STUDIO');
+      html=html.replace(/<button class="btn small ghost" data-action="logout">Sign out<\/button>/,'');
+      html=html.replace('</head>','<style>#auth{display:none!important}</style></head>');
+     }
      res.writeHead(200,{...securityHeaders,'content-type':'text/html; charset=utf-8',
       'content-security-policy':"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'self'; form-action 'none'; object-src 'none'"});
      res.end(html);return;
@@ -121,11 +139,12 @@ export function createHandler({ledger,tenants,adviser,shopify,unified}={}){
    if(!url.pathname.startsWith('/api/'))return response(res,404,{error:'Not found'});
    const preloaded=req.method==='POST'&&url.pathname==='/api/events'?await parseJSON(req):null;
    if(preloaded&&(typeof preloaded!=='object'||Array.isArray(preloaded)))fail(400,'JSON object required');
-   const w=preloaded?validateWorkspace(preloaded.workspace):requiredWorkspace(url);
+   const w=preloaded?validateWorkspace(preloaded.workspace||(publicDashboard?publicWorkspace:undefined)):requiredWorkspace(url);
    if(preloaded&&url.searchParams.has('workspace')&&url.searchParams.get('workspace')!==w)fail(400,'Conflicting workspace identifiers');
+   if(publicDashboard&&w!==publicWorkspace)return response(res,403,{error:'Workspace unavailable'});
    if(!Object.hasOwn(tenants,w))return response(res,401,{error:'Unauthorized'});
    const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname));
-   if(!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
+   if(!publicDashboard&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
    if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/'))){
     const payload=['POST','PATCH','PUT'].includes(req.method)?await parseJSON(req,110000):null;
     const result=await unified.handle(w,url.pathname.slice('/api/'.length),req.method,payload);

@@ -1,6 +1,8 @@
 FROM node:22.16-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PUBLIC_DASHBOARD=true
+ENV PUBLIC_WORKSPACE=default
 ENV HOST=0.0.0.0
 ENV DB_PATH=/data/a-plus.sqlite
 ENV AUTOMATION_DB_PATH=/data/automation.sqlite

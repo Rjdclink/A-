@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-const S={view:'overview',connected:false,busy:false,metrics:null,templates:[],selectedOpportunity:null};
+const S={view:'overview',connected:false,busy:false,metrics:null,templates:[],selectedOpportunity:null,public:false,publicWorkspace:'default'};
 const txt=(id,v)=>$(id).textContent=String(v??'—');
 const node=(tag,value,cls='')=>{const el=document.createElement(tag);el.className=cls;if(value!==undefined)el.textContent=String(value);return el;};
 const btn=(title,fn,cls='secondary')=>{const el=node('button',title,cls);el.type='button';el.addEventListener('click',fn);return el;};
@@ -7,11 +7,11 @@ const blank=(id,message)=>$(id).replaceChildren(node('div',message,'empty'));
 const line=(label,info,buttons=[],note='')=>{const el=node('div',undefined,'item'),main=node('div');main.append(node('h3',label),node('p',info));if(note)main.append(node('small',note));el.append(main);if(buttons.length){const actions=node('div',undefined,'actions');for(const b of buttons)actions.append(b);el.append(actions);}return el;};
 function notice(err){alert(String(err?.message||err));}
 function money(x){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(x)||0);}
-function identity(){return {workspace:$('workspace').value.trim(),token:$('token').value};}
+function identity(){return S.public?{workspace:S.publicWorkspace,token:''}:{workspace:$('workspace').value.trim(),token:$('token').value};}
 async function api(path,method='GET',payload){
- const {workspace,token}=identity();if(!workspace||!token)throw Error('Connect your workspace first.');
+ const {workspace,token}=identity();if(!workspace||(!S.public&&!token))throw Error('Connect your workspace first.');
  const url=path+(path.includes('?')?'&':'?')+'workspace='+encodeURIComponent(workspace);
- const response=await fetch(url,{method,headers:{authorization:'Bearer '+token,...(payload!==undefined?{'content-type':'application/json'}:{})},body:payload===undefined?undefined:JSON.stringify(payload)});
+ const response=await fetch(url,{method,headers:{...(S.public?{}:{authorization:'Bearer '+token}),...(payload!==undefined?{'content-type':'application/json'}:{})},body:payload===undefined?undefined:JSON.stringify(payload)});
  let result;try{result=await response.json();}catch{throw Error('Invalid server response');}
  if(!response.ok)throw Error(result.error||'Request failed ('+response.status+')');return result;
 }
@@ -23,15 +23,15 @@ function show(view){
  const loads={recovery:loadRecovery,automations:loadAutomation,apps:loadApps,activity:loadActivity,settings:loadSettings};
  loads[view]?.().catch(notice);
 }
-function workspacePanel(open){$('workspacePanel').classList.toggle('hidden',!open);$('toggleWorkspace').setAttribute('aria-expanded',String(open));}
+function workspacePanel(open){if(!$('workspacePanel'))return;$('workspacePanel').classList.toggle('hidden',!open);$('toggleWorkspace')?.setAttribute('aria-expanded',String(open));}
 function sendStudioAuth(){if(!S.connected)return;const frame=$('studioFrame');frame?.contentWindow?.postMessage({type:'aplus:auth',...identity()},location.origin);}
 $('studioFrame').addEventListener('load',sendStudioAuth);
 document.querySelectorAll('.nav').forEach(x=>x.addEventListener('click',()=>show(x.dataset.view)));
 document.querySelectorAll('[data-go]').forEach(x=>x.addEventListener('click',()=>show(x.dataset.go)));
 document.querySelectorAll('[data-action=openWorkspace]').forEach(x=>x.addEventListener('click',()=>workspacePanel(true)));
-$('toggleWorkspace').addEventListener('click',()=>workspacePanel($('workspacePanel').classList.contains('hidden')));
-$('hideWorkspace').addEventListener('click',()=>workspacePanel(false));
-for(const id of ['workspace','token'])$(id).addEventListener('input',()=>{S.connected=false;S.metrics=null;txt('connectionIndicator','Connect workspace');txt('status','Connection changed. Reconnect to view data.');});
+$('toggleWorkspace')?.addEventListener('click',()=>workspacePanel($('workspacePanel').classList.contains('hidden')));
+$('hideWorkspace')?.addEventListener('click',()=>workspacePanel(false));
+for(const id of ['workspace','token'])$(id)?.addEventListener('input',()=>{S.connected=false;S.metrics=null;txt('connectionIndicator','Connect workspace');txt('status','Connection changed. Reconnect to view data.');});
 function renderCommerce(metrics){
  S.metrics=metrics;txt('commerceVisits',metrics.visits);txt('commerceCarts',metrics.carts);txt('commerceLeads',metrics.leads);
  const campaigns=Object.entries(metrics.byCampaign||{}).sort((a,b)=>b[1].revenue-a[1].revenue);
@@ -52,7 +52,7 @@ async function overview(){
  if(extras[1].status==='fulfilled')txt('overviewWorkflowCount',extras[1].value.active_workflows);
  return metrics;
 }
-$('load').addEventListener('click',async()=>{if(S.busy)return;S.busy=true;$('load').disabled=true;txt('status','Connecting…');try{await overview();workspacePanel(false);sendStudioAuth();txt('status','Connected.');}catch(e){txt('status',e.message);workspacePanel(true);}finally{S.busy=false;$('load').disabled=false;}});
+$('load')?.addEventListener('click',async()=>{if(S.busy)return;S.busy=true;$('load').disabled=true;txt('status','Connecting…');try{await overview();workspacePanel(false);sendStudioAuth();txt('status','Connected.');}catch(e){txt('status',e.message);workspacePanel(true);}finally{S.busy=false;$('load').disabled=false;}});
 $('refreshOverview').addEventListener('click',()=>overview().catch(notice));
 $('advise').addEventListener('click',async()=>{if(S.busy)return;S.busy=true;$('advise').disabled=true;$('resultPanel').classList.remove('hidden');txt('advice','Preparing grounded recommendations…');try{const r=await api('/api/advice','POST',{objective:'Prioritize measurable commerce and customer growth.'});txt('advice',r.advice);}catch(e){txt('advice',e.message);}finally{S.busy=false;$('advise').disabled=false;}});
 $('closeAdvice').addEventListener('click',()=>$('resultPanel').classList.add('hidden'));
@@ -158,4 +158,16 @@ async function loadSettings(){
 }
 $('billingRefresh').addEventListener('click',()=>loadSettings().catch(notice));
 $('neonRefresh').addEventListener('click',()=>loadSettings().catch(notice));
-workspacePanel(true);
+async function start(){
+ try{
+  const res=await fetch('/api/dashboard-config',{cache:'no-store'});
+  if(!res.ok)throw Error('Unable to load dashboard configuration');
+  const config=await res.json();
+  S.public=config.public===true;
+  if(S.public){
+   S.publicWorkspace=config.workspace||'default';
+   try{await overview();sendStudioAuth();}catch(e){txt('connectionIndicator','Unavailable');console.error('Dashboard loading failed:',e.message);}
+  }else workspacePanel(true);
+ }catch(e){console.error('Dashboard startup failed:',e.message);workspacePanel(true);}
+}
+start();
