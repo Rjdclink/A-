@@ -145,6 +145,26 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
    if(!Object.hasOwn(tenants,w))return response(res,401,{error:'Unauthorized'});
    const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname));
    if(!publicDashboard&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
+   if(unified&&req.method==='GET'&&url.pathname==='/api/advanced/summary'){
+    const entries=[
+     ['workflows','growth/workflows'],
+     ['plans','growth/billing/plans'],
+     ['billing','growth/billing'],
+     ['audit','growth/audit'],
+     ['history','neon/history'],
+     ['maintenance','growth/maintenance'],
+     ['connections','integrations/status']
+    ];
+    const results=await Promise.all(entries.map(async([name,route])=>{
+     try{
+      const result=await unified.handle(w,route,'GET',null);
+      return [name,result.status>=200&&result.status<300?result.data:null];
+     }catch{return [name,null];}
+    }));
+    const data=Object.fromEntries(results);
+    data.privacy={requests:ledger.pendingPrivacyRequests(w)};
+    return response(res,200,data);
+   }
    if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/')||url.pathname.startsWith('/api/integrations/'))){
     const payload=['POST','PATCH','PUT'].includes(req.method)?await parseJSON(req,110000):null;
     const result=await unified.handle(w,url.pathname.slice('/api/'.length),req.method,payload);
