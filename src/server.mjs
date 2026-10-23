@@ -13,7 +13,7 @@ const shops=process.env.SHOPIFY_SHOPS_JSON?JSON.parse(process.env.SHOPIFY_SHOPS_
 const unified=createUnified({ledger});
 const handler=createHandler({ledger,tenants,unified,publicDashboard:process.env.PUBLIC_DASHBOARD==='true',publicWorkspace:process.env.PUBLIC_WORKSPACE||'default',adviser:advisory,shopify:{secret:process.env.SHOPIFY_SECRET,shops,allowOrders:process.env.SHOPIFY_ANALYTICS_BASIS_ACKNOWLEDGED==='true'}});
 const server=createServer(handler);
-const host=process.env.HOST||'127.0.0.1';
+const host=process.env.HOST||(process.env.PUBLIC_DASHBOARD==='true'?'0.0.0.0':'127.0.0.1');
 server.requestTimeout=15000;server.headersTimeout=10000;server.keepAliveTimeout=5000;
 const daily=setInterval(()=>{try{ledger.eraseOld({days:Number(process.env.RETENTION_DAYS||180)});}catch{console.error('Retention cleanup failed');}},86400000);daily.unref();
 ledger.eraseOld({days:Number(process.env.RETENTION_DAYS||180)});

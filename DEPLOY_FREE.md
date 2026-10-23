@@ -11,12 +11,8 @@ Existing Neon projects remain separate; enable the optional Neon PostgreSQL acti
 
 1. Sign in to VibeNest and authorize read-only GitHub access only to Rjdclink/A-. Choose the reviewed integration branch. Do not use GitHub Actions.
 2. Create a Free Node web service using the repository Dockerfile. Node.js 22.16 or newer is required. Configure the persistent volume mount at /data. Use the container port supplied by the host; A+ binds to the platform PORT on HOST=0.0.0.0.
-3. Configure these values in the host's encrypted environment-variable editor. Never commit them to GitHub or paste them into chat:
-   ADMIN_TOKEN — unique cryptographically random 32+ character token;
-   INGEST_TOKEN — different cryptographically random 32+ character token;
-   PSEUDONYM_KEY — third stable cryptographically random 32+ character key;
-   NEON_DATABASE_URL — optional Neon PostgreSQL connection string with least-privilege permissions, never a key exposed in client-side code.
-4. Other environment values:
+3. VibeNest's Nixpacks deployment opens the live dashboard without login by default. The server automatically generates distinct administrator, ingestion and pseudonym keys and saves them in its private data directory. Preserve that directory across restarts. You can override generated values using server-only encrypted environment variables. Add `NEON_DATABASE_URL` if Neon PostgreSQL activity history is required; its value must remain server-side.
+4. Optional environment values (the default public host and public mode are already automatic):
    HOST=0.0.0.0
    DB_PATH=/data/a-plus.sqlite
    AUTOMATION_DB_PATH=/data/automation.sqlite
@@ -37,6 +33,10 @@ Neon Functions are not conventional static-site hosting. The browser dashboard m
 
 ## Verification
 
-Run npm ci and npm run verify before deployment. Inspect /health over HTTPS, connect using the A+ administrator token, test every dashboard section, and verify each workflow's observable output. Test an event-triggered workflow with external actions disabled. Test live service integrations only with configured credentials. Verify database integrity and actual restart persistence.
+Run npm ci and npm run verify before deployment. Inspect /health over HTTPS, open the dashboard without credentials, test every dashboard section, and verify each workflow's observable output. Test an event-triggered workflow with external actions disabled. Test live service integrations only with configured credentials. Verify database integrity and actual restart persistence.
 
 Never represent the public dashboard as deployed or 100% functional until the selected host returns a verified URL and production acceptance tests pass.
+
+## Startup fix for VibeNest Nixpacks
+
+`npm start` now generates and persists private service secrets automatically when `PUBLIC_DASHBOARD` is unset or true, and binds the HTTP listener to `0.0.0.0` in this mode. The VibeNest deployment of the old main branch previously crashed because `ADMIN_TOKEN` and `INGEST_TOKEN` were missing. Explicit `PUBLIC_DASHBOARD=false` retains credential-required operation. Data requires a persistent writable volume for restarts. This one-click public mode deliberately permits visitors to operate the workspace; do not assume an obscure URL is access control.
