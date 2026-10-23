@@ -16,8 +16,12 @@ const insert="INSERT INTO aplus_function_state (workspace,admin_token,ingest_tok
 const select="SELECT commerce,automation,admin_token,ingest_token,pseudonym_key FROM aplus_function_state WHERE workspace=$1 FOR UPDATE";
 const update="UPDATE aplus_function_state SET commerce=$2,automation=$3,updated_at=now() WHERE workspace=$1";
 const strip=new Set(['connection','transfer-encoding','content-length','keep-alive','upgrade']);
+export function shouldTickWorkers(method,path,scheduled=false){
+ return scheduled||(method==='POST'&&path!=='/tasks');
+}
 
-async function forward(request,dir,saved,env){
+
+async function forward(request,dir,saved,env,{tickWorkers=false}={}){
  const commerce=join(dir,'commerce.sqlite'),automation=join(dir,'automation.sqlite');
  if(saved.commerce)await writeFile(commerce,saved.commerce);
  if(saved.automation)await writeFile(automation,saved.automation);
@@ -46,8 +50,10 @@ async function forward(request,dir,saved,env){
   for(const name of strip)resultHeaders.delete(name);
   // Neon Functions do not host unattended application workers. Scheduled
   // invocations and ordinary requests can make progress on queued workflows.
-  await unified.growth.tick().catch(e=>console.error('Growth tick:',e?.code||e?.name));
-  await unified.recovery.tick().catch(e=>console.error('Recovery tick:',e?.code||e?.name));
+  if(tickWorkers){
+   await unified.growth.tick().catch(e=>console.error('Growth tick:',e?.code||e?.name));
+   await unified.recovery.tick().catch(e=>console.error('Recovery tick:',e?.code||e?.name));
+  }
   ledger.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   unified.growth.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   return {response:new Response(data,{status:reply.status,headers:resultHeaders}),snapshot:true};
@@ -83,7 +89,7 @@ export function createNeonApp({pool,env=process.env}={}){
     dir=await mkdtemp(join(tmpdir(),'aplus-neon-'));
     // Copy-on-request serialized under row lock; snapshots are stored durably in Neon.
     const forwarded=scheduled?new Request(new URL('/health',route),{method:'GET'}):request;
-    const answer=await forward(forwarded,dir,state,env);
+    const answer=await forward(forwarded,dir,state,env,{tickWorkers:shouldTickWorkers(request.method,route.pathname,scheduled)});
     if(answer.snapshot){
      const files=await Promise.all(['commerce.sqlite','automation.sqlite'].map(name=>readFile(join(dir,name))));
      await client.query(update,['default',...files]);
