@@ -129,7 +129,9 @@ export class Ledger{
  assign(workspace,experiment,subject,{consent,now=Date.now()}={}){
   validateWorkspace(workspace);safeId(experiment);if(consent!==true)fail(400,'Experiment assignment requires consent');if(typeof subject!=='string'||subject.length<1||subject.length>120)fail(400,'Invalid subject token');
   const exp=this.db.prepare('SELECT id FROM experiments WHERE workspace=? AND id=?').get(workspace,experiment);if(!exp)fail(404,'Unknown experiment');
-  const hash=this.hash(workspace,subject);const variant=experimentVariant(workspace,experiment,subject,this.key);
+  const hash=this.hash(workspace,subject);
+  if(this.db.prepare('SELECT 1 FROM redacted_customers WHERE workspace=? AND subject_hash=?').get(workspace,hash))fail(410,'Subject has been erased');
+  const variant=experimentVariant(workspace,experiment,subject,this.key);
   this.db.prepare('INSERT OR IGNORE INTO assignments(workspace,experiment_id,subject_hash,variant,assigned_at) VALUES(?,?,?,?,?)').run(workspace,experiment,hash,variant,now);
   const row=this.db.prepare('SELECT variant FROM assignments WHERE workspace=? AND experiment_id=? AND subject_hash=?').get(workspace,experiment,hash);return row.variant;
  }
