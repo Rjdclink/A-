@@ -175,13 +175,9 @@ start();
 
 // Advanced tools are grouped in one section to avoid burdening the main dashboard.
 async function loadAdvanced(){
- const result=await Promise.allSettled([
-  api('/api/growth/workflows'),api('/api/privacy/requests'),
-  api('/api/growth/billing/plans'),api('/api/growth/billing'),
-  api('/api/growth/audit'),api('/api/neon/history'),
-  api('/api/growth/maintenance'),api('/api/integrations/status')
- ]);
- const val=i=>result[i].status==='fulfilled'?result[i].value:null;
+ const summary=await api('/api/advanced/summary');
+ const keys=['workflows','privacy','plans','billing','audit','history','maintenance','connections'];
+ const val=i=>summary[keys[i]]??null;
  const provider=val(7);
  $('providerStatus').replaceChildren();
  if(!provider?.providers)blank('providerStatus','Provider status currently unavailable.');

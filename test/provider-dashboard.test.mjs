@@ -7,7 +7,7 @@ test('Advanced Controls exposes provider diagnostics and meaningful setup states
  assert.match(html,/id="view-advanced"/);
  assert.match(html,/id="providerStatus"/);
  assert.match(html,/id="refreshConnections"/);
- assert.match(app,/\/api\/integrations\/status/);
+ assert.match(app,/\/api\/advanced\/summary/);
  assert.match(app,/configuration_incomplete/);
  assert.match(app,/Configured means|live provider verification required/);
  assert.doesNotMatch(app,/localStorage|sessionStorage|innerHTML/);
