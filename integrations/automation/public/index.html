@@ -1,0 +1,288 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#0a1020"><title>GrowthVeyra AI — Enterprise Automation</title>
+<link rel="stylesheet" href="/dashboard.css"><link rel="stylesheet" href="/designer.css"><link rel="stylesheet" href="/commerce.css"><script type="module" src="/designer.js"></script><script type="module" src="/commerce.js"></script></head><body>
+<div id="auth" class="auth-form hidden">
+  <div class="auth-logo"><span class="brandmark">✦</span><span>GrowthVeyra <em>AI</em></span></div>
+  <h1>Make work flow.</h1><p class="subtle">Your intelligent automation workspace.</p>
+  <form id="auth-form">
+    <label class="field" id="name-label">Workspace name<input id="workspace-name" autocomplete="organization" placeholder="Your company"></label>
+    <label class="field">Email<input id="auth-email" type="email" required autocomplete="username" placeholder="you@company.com"></label>
+    <label class="field">Password<input id="auth-password" type="password" minlength="12" required autocomplete="current-password"></label>
+    <button class="btn primary wide" type="submit" id="auth-submit">Create workspace</button>
+    <button class="link" id="auth-mode" type="button">Already registered? Sign in</button>
+  </form><p class="auth-hint">12 characters minimum. Private by default.</p>
+</div>
+<div id="app" class="layout hidden">
+  <aside class="sidebar" aria-label="Main navigation">
+    <div class="brand"><div class="brandmark" aria-hidden="true">✦</div><div>GrowthVeyra <em>AI</em><small>WORKSPACE</small></div></div>
+    <nav class="nav" aria-label="Sections">
+      <button class="active" data-nav="dashboard"><span class="nav-symbol" aria-hidden="true">◈</span>Overview</button>
+      <button data-nav="workflows"><span class="nav-symbol" aria-hidden="true">▦</span>Automations</button>
+      <button data-nav="runs"><span class="nav-symbol" aria-hidden="true">◷</span>Activity</button>
+      <button data-nav="approvals"><span class="nav-symbol" aria-hidden="true">✓</span>Approvals <span id="approval-dot" class="nav-count hidden">0</span></button>
+      <button data-nav="knowledge"><span class="nav-symbol" aria-hidden="true">▤</span>Knowledge</button>
+      <button data-nav="connections"><span class="nav-symbol" aria-hidden="true">⌁</span>Apps</button>
+      <button data-nav="billing" class="nav-secondary"><span class="nav-symbol" aria-hidden="true">◇</span>Subscription</button>
+      <button data-nav="audit" class="nav-secondary"><span class="nav-symbol" aria-hidden="true">☷</span>History</button>
+    </nav>
+    <div class="sidebar-foot"><span class="live-dot" aria-hidden="true"></span> Private workspace</div>
+  </aside>
+  <main class="main">
+    <header class="top"><div><p class="eyebrow">GROWTHVEYRA AI</p><h1 id="page-title">Overview</h1><p class="subtle" id="page-subtitle">A clear view of your work.</p></div>
+      <div class="account"><span id="account-email"></span><div class="avatar" aria-hidden="true">GV</div><button class="btn small ghost" data-action="logout">Sign out</button></div>
+    </header>
+    <section id="dashboard" class="section active" aria-label="Overview">
+      <div class="hero"><div class="hero-copy"><span class="eyebrow">YOUR AI WORKSPACE</span><h2>Your work, on autopilot.</h2><p>Create once. Keep work moving.</p></div>
+        <button class="btn primary" data-action="open-builder">+ New automation</button>
+      </div>
+      <div class="metrics" aria-label="Workspace summary">
+        <div class="metric"><label>Active automations</label><b id="metric-active">0</b><span>Running when needed</span></div>
+        <div class="metric"><label>Completed</label><b id="metric-done">0</b><span>Successful runs</span></div>
+        <div class="metric"><label>Needs approval</label><b id="metric-approvals">0</b><span>Waiting for you</span></div>
+      </div>
+      <div class="attention-strip" id="home-attention" role="status"><div><span class="attention-mark" aria-hidden="true">✓</span><span id="dashboard-status">All caught up</span></div><button class="btn small hidden" id="attention-action" data-nav="approvals">Review</button></div>
+      <div class="columns">
+        <div class="panel"><div class="panel-head"><h3>Automations</h3><button class="text-action" data-nav="workflows">See all <span aria-hidden="true">→</span></button></div><div class="panel-content" id="home-workflows"></div></div>
+        <div class="panel"><div class="panel-head"><h3>Recent activity</h3><button class="text-action" data-nav="runs">See all <span aria-hidden="true">→</span></button></div><div class="panel-content" id="home-runs"></div></div>
+      </div>
+    </section>
+    <section id="workflows" class="section" aria-label="Automations">
+      <div class="panel"><div class="panel-head"><h3>Your automations</h3><button class="btn primary small" data-action="toggle-builder">+ New automation</button></div><div class="panel-content" id="workflow-list"></div></div>
+      <div class="panel hidden builder-panel" id="builder"><div class="panel-head"><h3>New automation</h3><div class="row"><button class="text-action" type="button" data-action="import-workflow">Import file</button><button class="text-action" data-action="toggle-builder">Close</button><input class="hidden" id="wf-import-file" type="file" accept=".json,application/json" aria-label="Import automation file"></div></div>
+        <form class="panel-content" id="workflow-form">
+          <details class="advanced ai-goal"><summary>Create from a description</summary>
+            <label class="field">What should this automation do?<textarea id="ai-builder-goal" maxlength="1500" minlength="15" placeholder="Example: Organize customer inquiries and draft accurate follow-ups."></textarea></label>
+            <p class="subtle">Your description is sent to your configured AI provider. No automation is saved until you review it.</p>
+            <div class="row"><button class="btn small primary" type="button" data-action="generate-workflow">Generate draft</button><span class="subtle" id="ai-builder-note"></span></div>
+          </details>
+          <div class="form-grid">
+            <label class="field">Start with<select id="wf-template"></select></label>
+            <label class="field">Name<input id="wf-name" required placeholder="My automation"></label>
+          </div>
+          <p class="template-note" id="template-description"></p>
+          <div class="form-grid">
+            <label class="field">When should it run?<select id="wf-trigger"><option value="manual">When I start it</option><option value="interval">On a schedule</option><option value="webhook">When another app triggers it</option></select></label>
+            <label class="field hidden" id="interval-field">Every (minutes)<input type="number" min="1" max="10080" value="60" id="wf-minutes"></label>
+          </div>
+          <details id="advanced-builder" class="advanced"><summary>Advanced options</summary>
+            <label class="field">Workflow steps (JSON)<textarea class="editor" spellcheck="false" required id="wf-json"></textarea></label>
+            <label class="checkbox"><input type="checkbox" id="wf-external">Allow explicitly configured external actions without extra approval.</label>
+            <button class="btn small" type="button" data-action="validate-json">Check workflow</button>
+          </details>
+          <div class="row right"><button class="btn primary" type="submit">Save automation</button></div>
+        </form>
+      </div>
+    </section>
+    <section id="runs" class="section" aria-label="Activity"><div class="panel"><div class="panel-head"><h3>Activity</h3><div class="row"><button class="text-action" data-action="view-insights">Insights</button><button class="text-action" data-action="refresh">Refresh</button></div></div><div class="panel-content" id="run-list"></div></div></section>
+    <section id="approvals" class="section" aria-label="Approvals"><div class="panel"><div class="panel-head"><h3>Needs your approval</h3><button class="text-action" data-action="refresh">Refresh</button></div><div class="panel-content" id="approval-list"></div></div></section>
+    <section id="knowledge" class="section" aria-label="Knowledge"><div class="columns"><div class="panel"><div class="panel-head"><h3>Saved knowledge</h3></div><div class="panel-content" id="knowledge-list"></div></div><div class="panel"><div class="panel-head"><h3>Add knowledge</h3></div><form class="panel-content" id="knowledge-form"><label class="field">Name<input id="knowledge-name" placeholder="Company FAQ" required></label><label class="field">Content<textarea id="knowledge-content" minlength="10" placeholder="Paste your document or policy…" required></textarea></label><button class="btn primary" type="submit">Save knowledge</button></form></div></div></section>
+    <section id="connections" class="section" aria-label="Apps">
+      <div class="panel"><div class="panel-head"><h3>Find an app</h3><span class="subtle" id="catalog-count"></span></div>
+        <div class="panel-content">
+          <label class="field">Search apps<input id="app-catalog-search" type="search" placeholder="HubSpot, Slack, Google Drive..." autocomplete="off"></label>
+          <div id="catalog-results" class="commerce-grid" aria-live="polite"></div>
+          <p class="subtle">App profiles are ready to configure. Provider credentials and access are required.</p>
+          <div id="catalog-connect-pane" class="commerce-connect hidden">
+            <form id="catalog-connect-form" autocomplete="off">
+              <strong id="catalog-connect-heading">Connect an app</strong>
+              <p class="subtle">Use a provider-issued API credential. Secrets are encrypted and never shown again.</p>
+              <label class="field hidden" id="catalog-host-wrapper">API hostname<input id="catalog-connect-host" maxlength="253" autocomplete="off"></label>
+              <label class="field">API token<input type="password" id="catalog-connect-secret" maxlength="4096" required autocomplete="new-password"></label>
+              <div class="row"><button class="btn primary small" type="submit">Save connection</button><button class="btn small ghost" type="button" id="catalog-connect-cancel">Cancel</button></div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="panel"><div class="panel-head"><h3>My connected apps</h3></div><div class="panel-content" id="catalog-connected">No apps configured yet.</div></div>
+      <div class="columns"><div class="panel"><div class="panel-head"><h3>Connected services</h3></div><div class="panel-content" id="connection-list"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Custom integration</h3></div>
+      <details class="panel-content advanced"><summary>Advanced: connect a custom API</summary>
+      <form id="connection-form" autocomplete="off">
+        <label class="field">Name<input id="connection-name" placeholder="My service" maxlength="100" required></label>
+        <label class="field">API hostname<input id="connection-host" placeholder="api.example.com" maxlength="253" required></label>
+        <label class="field">Security method<select id="connection-type"><option value="bearer">Bearer token</option><option value="api_key">API key</option></select></label>
+        <label class="field">Secret key<input id="connection-secret" type="password" maxlength="4096" required autocomplete="new-password"></label>
+        <button class="btn primary" type="submit">Save connection</button>
+        <p class="subtle">Encrypted at rest. Keys are never displayed again.</p>
+      </form></details></div></div>
+    </section>
+    <section id="billing" class="section" aria-label="Subscription">
+      <div class="panel"><div class="panel-head"><h3>Current plan</h3></div><div class="panel-content" id="billing-status">Loading your plan...</div></div>
+      <div class="panel"><div class="panel-head"><h3>Available plans</h3></div><div class="panel-content commerce-plans" id="billing-plans"></div></div>
+      <p class="subtle">Recurring subscriptions are handled securely by Square. Card details are never entered in this dashboard.</p>
+    </section>
+    <section id="audit" class="section" aria-label="History"><div class="panel"><div class="panel-head"><h3>History</h3><button class="text-action" data-action="refresh">Refresh</button></div><div class="panel-content" id="audit-list"></div></div></section>
+  </main>
+</div>
+<div class="modal-back hidden" id="modal-cover" role="presentation"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-top"><h2 id="modal-title">Details</h2><button class="btn small" data-action="close-modal">Close</button></div><div id="modal-body"></div></div></div>
+<div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dt=n=>n?new Date(n).toLocaleString():'—';
+const store={workflows:[],runs:[],approvals:[],knowledge:[],audit:[],connections:[],templates:[],overview:{}};
+let signingUp=true,toastTimer,generatedDraft=false;
+function toast(msg){const n=$('#toast');n.textContent=msg;n.classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>n.classList.add('hidden'),5500);}
+async function api(path,method='GET',body){
+ const res=await fetch(path,{method,headers:{'content-type':'application/json'},credentials:'same-origin',body:body===undefined?undefined:JSON.stringify(body)});
+ const out=await res.json().catch(()=>({error:'Invalid server response'}));if(!res.ok)throw Error(out.error||`Request failed (${res.status})`);return out;
+}
+function auth(show){$('#auth').classList.toggle('hidden',!show);$('#app').classList.toggle('hidden',show);}
+function authMode(signup){signingUp=signup;$('#name-label').classList.toggle('hidden',!signup);$('#auth-submit').textContent=signup?'Create workspace':'Sign in';$('#auth-mode').textContent=signup?'Already registered? Sign in':'Need an account? Register';}
+function nav(page){
+ $$('.section').forEach(x=>x.classList.toggle('active',x.id===page));
+ $$('.nav button').forEach(x=>{const active=x.dataset.nav===page;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current');});
+ const titles={dashboard:'Overview',workflows:'Automations',runs:'Activity',approvals:'Approvals',knowledge:'Knowledge',connections:'Apps',billing:'Subscription',audit:'History'};
+ $('#page-title').textContent=titles[page]||'GrowthVeyra AI';
+ $('#page-subtitle').textContent=page==='dashboard'?'A clear view of your work.':'';
+ window.scrollTo({top:0,behavior:'instant'});
+}
+function empty(message){return `<div class="empty">${esc(message)}</div>`;}
+function statusLabel(status){return ({queued:'Waiting',running:'In progress',completed:'Finished',awaiting_approval:'Needs approval',awaiting_child:'Waiting on automation',failed:'Needs attention',rejected:'Declined',cancelled:'Stopped',enabled:'On',disabled:'Paused'})[status]||'Unknown';}
+function badge(status){return `<span class="pill ${esc(status)}">${esc(statusLabel(status))}</span>`;}
+function item(title,desc,control=''){return `<div class="item"><div><strong>${esc(title)}</strong><p>${esc(desc)}</p></div>${control}</div>`;}
+function triggerLabel(w){if(w.trigger?.type==='interval')return `Every ${w.trigger.every_minutes} min`;if(w.trigger?.type==='webhook')return 'From another app';return 'Started manually';}
+function workflowName(id){return store.workflows.find(w=>w.id===id)?.name||'Automation';}
+function eventLabel(action){return ({'workflow.created':'Automation added','workflow.enabled':'Automation resumed','workflow.disabled':'Automation paused','workflow.deleted':'Automation deleted','workflow.triggered':'Automation started','run.cancelled':'Run stopped','approval.approved':'Action approved','approval.rejected':'Action declined','knowledge.added':'Knowledge saved','knowledge.deleted':'Knowledge deleted','account.login':'Signed in','account.created':'Workspace created'})[action]||String(action||'Activity').replace(/[._]/g,' ');}
+async function refresh(){
+ try{
+  const [overview,workflows,runs,approvals,knowledge,audit,connections]=await Promise.all(['/api/overview','/api/workflows','/api/runs','/api/approvals','/api/knowledge','/api/audit','/api/connections'].map(p=>api(p)));
+  Object.assign(store,{overview,workflows,runs,approvals,knowledge,audit,connections});paint();
+ }catch(e){if(e.message==='Authentication required'){auth(true);return;}toast(e.message);}
+}
+function paint(){
+ $('#metric-active').textContent=store.overview.active_workflows||0;
+ $('#metric-done').textContent=store.overview.runs?.completed||0;
+ $('#metric-approvals').textContent=store.approvals.length;
+ const approvals=store.approvals.length;
+ $('#approval-dot').textContent=approvals;$('#approval-dot').classList.toggle('hidden',approvals===0);
+ const recentByWorkflow=new Set(),failed=[];
+ for(const r of store.runs){if(recentByWorkflow.has(r.workflow_id))continue;recentByWorkflow.add(r.workflow_id);if(r.status==='failed')failed.push(r);}
+ const attention=$('#home-attention'),action=$('#attention-action');attention.classList.toggle('warn',!!(approvals||failed.length));
+ $('#home-attention .attention-mark').textContent=(approvals||failed.length)?'!':'✓';
+ if(approvals){$('#dashboard-status').textContent=approvals===1?'1 action needs your approval':`${approvals} actions need your approval`;action.textContent='Review';action.dataset.nav='approvals';action.classList.remove('hidden');}
+ else if(failed.length){$('#dashboard-status').textContent=failed.length===1?'1 automation needs attention':`${failed.length} automations need attention`;action.textContent='View activity';action.dataset.nav='runs';action.classList.remove('hidden');}
+ else{$('#dashboard-status').textContent='All caught up';action.classList.add('hidden');}
+ $('#home-workflows').innerHTML=store.workflows.length?store.workflows.slice(0,5).map(w=>item(w.name,triggerLabel(w),`<div class="row">${badge(w.enabled?'enabled':'disabled')}<button class="btn small" data-action="execute" data-id="${w.id}" ${w.enabled?'':'disabled'}>Run</button></div>`)).join(''):empty('No automations yet. Create your first one.');
+ $('#home-runs').innerHTML=store.runs.length?store.runs.slice(0,5).map(r=>item(workflowName(r.workflow_id),dt(r.created_at),`<div class="row">${badge(r.status)}<button class="text-action" data-action="view-run" data-id="${r.id}">View</button></div>`)).join(''):empty('Activity appears here after your first run.');
+ $('#workflow-list').innerHTML=store.workflows.length?store.workflows.map(w=>item(w.name,triggerLabel(w),`<div class="row">${badge(w.enabled?'enabled':'disabled')}<button class="btn small" data-action="execute" data-id="${w.id}" ${w.enabled?'':'disabled'}>Run</button><button class="text-action" data-action="edit-workflow" data-id="${w.id}">Design</button><button class="text-action" data-action="toggle-workflow" data-id="${w.id}">${w.enabled?'Pause':'Resume'}</button></div>`)).join(''):empty('Choose a template to get started.');
+ $('#run-list').innerHTML=store.runs.length?store.runs.slice(0,40).map(r=>item(workflowName(r.workflow_id),dt(r.created_at),`<div class="row">${badge(r.status)}<button class="text-action" data-action="view-run" data-id="${r.id}">Details</button></div>`)).join(''):empty('Nothing has run yet.');
+ $('#approval-list').innerHTML=approvals?store.approvals.map(a=>{const r=store.runs.find(r=>r.id===a.run_id);return item(workflowName(r?.workflow_id),a.message,`<div class="row"><button class="btn small primary" data-action="approve" data-id="${a.id}">Approve</button><button class="btn small danger" data-action="reject" data-id="${a.id}">Decline</button></div>`);}).join(''):empty('Nothing needs your approval.');
+ $('#knowledge-list').innerHTML=store.knowledge.length?store.knowledge.map(k=>item(k.name,String(k.excerpt||'').slice(0,110),`<button class="text-action" data-action="delete-knowledge" data-id="${k.id}">Remove</button>`)).join(''):empty('Add reference material for your automations.');
+ $('#connection-list').innerHTML=store.connections.length?store.connections.map(c=>item(c.name,c.host,`<button class="text-action" data-action="delete-connection" data-id="${esc(c.id)}">Remove</button>`)).join(''):empty('No services connected yet.');
+ $('#audit-list').innerHTML=store.audit.length?store.audit.slice(0,40).map(a=>item(eventLabel(a.action),dt(a.created_at))).join(''):empty('No history yet.');
+}
+function showModal(title,html){$('#modal-title').textContent=title;$('#modal-body').innerHTML=html;$('#modal-cover').classList.remove('hidden');$('#modal-cover [data-action="close-modal"]').focus();}
+function closeModal(){$('#modal-cover').classList.add('hidden');$('#modal-body').replaceChildren();}
+function openBuilder(){
+ nav('workflows');$('#builder').classList.remove('hidden');$('#advanced-builder').open=false;
+ if(store.templates.length&&!$('#wf-json').value)selectTemplate(0);
+ $('#builder').scrollIntoView({behavior:'smooth',block:'start'});$('#wf-name').focus();
+}
+function selectTemplate(index){generatedDraft=false;const entry=store.templates[index];if(!entry)return;$('#wf-name').value=entry.name;$('#wf-json').value=JSON.stringify(entry.spec,null,2);$('#wf-trigger').value=entry.trigger.type;$('#wf-trigger').dispatchEvent(new Event('change'));$('#template-description').textContent=entry.description||'';}
+function inputFieldsForWorkflow(wf){
+ const words=JSON.stringify(wf?.spec||{}).matchAll(/\{\{\s*input\.([a-zA-Z_][\w]*)\s*\}\}/g);
+ return [...new Set([...words].map(m=>m[1]))].filter(k=>!['__proto__','constructor','prototype'].includes(k)).slice(0,12);
+}
+function fieldLabel(key){return ({inquiry:'Inquiry',question:'Question',request:'Request',message:'Message',name:'Name',text:'Text',content:'Content'})[key]||key.replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());}
+function startRun(id){
+ const w=store.workflows.find(x=>x.id===id);if(!w)return;
+ const keys=inputFieldsForWorkflow(w);
+ const fields=keys.length?keys.map(key=>`<label class="field">${esc(fieldLabel(key))}<textarea data-input-key="${esc(key)}" placeholder="Enter ${esc(fieldLabel(key).toLowerCase())}…" required></textarea></label>`).join(''):'<p class="subtle">Ready to start?</p>';
+ showModal(w.name,`<form id="run-input-form" data-id="${esc(w.id)}">${fields}<div class="row right"><button type="submit" class="btn primary">Start run</button></div></form>`);
+ if(keys.length)$('#run-input-form textarea')?.focus();
+}
+async function showRun(id){
+ const r=await api('/api/runs/'+id);
+ const steps=Object.entries(r.state?.steps||{}).filter(([,v])=>v!==null&&v!==undefined&&v!==''&&v!=='finished');
+ const last=steps.at(-1)?.[1];const outcome=typeof last==='string'?last:JSON.stringify(last??'No output yet',null,2);
+ showModal(workflowName(r.workflow_id),`<p class="row">${badge(r.status)}<span class="subtle">${dt(r.created_at)}</span></p>${r.error?`<p class="note">${esc(r.error)}</p>`:''}<h3>Result</h3><pre>${esc(outcome)}</pre><details class="advanced"><summary>Technical details</summary><h3>Input</h3><pre>${esc(JSON.stringify(r.input,null,2))}</pre><h3>Steps</h3><pre>${esc(JSON.stringify(r.state,null,2))}</pre><h3>History</h3>${(r.logs||[]).map(x=>item(eventLabel(x.event),dt(x.created_at))).join('')}<div class="row" id="run-children">${(r.children||[]).length?'<h3>Related automations</h3>'+r.children.map(child=>item(workflowName(child.workflow_id),statusLabel(child.status),`<button class="text-action" data-action="view-run" data-id="${esc(child.id)}">View</button>`)).join(''):''}</div></details><div class="row right">${r.status==='failed'&&r.manual_retries<3?`<button class="btn primary" data-action="retry-run" data-id="${esc(id)}">Retry</button>`:''}<button class="btn danger" data-action="cancel-run" data-id="${id}" ${['completed','failed','cancelled','rejected'].includes(r.status)?'disabled':''}>Stop run</button></div>`);
+}
+$('#auth-mode').addEventListener('click',()=>authMode(!signingUp));
+$('#auth-form').addEventListener('submit',async e=>{e.preventDefault();try{const data={name:$('#workspace-name').value,email:$('#auth-email').value,password:$('#auth-password').value};const res=await api(signingUp?'/api/auth/register':'/api/auth/login','POST',data);$('#account-email').textContent=res.user.email;auth(false);await load();toast('Signed in');}catch(e){toast(e.message);}});
+$('#wf-template').addEventListener('change',e=>selectTemplate(Number(e.target.value)));
+$('#ai-builder-goal').addEventListener('input',()=>{$('#ai-builder-note').textContent='';});
+$('#wf-import-file').addEventListener('change',async e=>{
+ const file=e.target.files?.[0];if(!file)return;
+ try{
+  if(file.size>60000)throw Error('Automation file is too large');
+  const contents=JSON.parse(await file.text());
+  const imported=await api('/api/workflows/import','POST',contents);
+  $('#builder').classList.add('hidden');await refresh();
+  if(imported.webhook_secret)showModal('Reconnect your app',`<p class="subtle">Save this new webhook secret. It appears only once.</p><pre>${esc(imported.webhook_secret)}</pre>`);
+  else toast('Automation imported and paused. Review it before enabling.');
+ }catch(err){toast(err.message||'Could not import file');}
+ finally{e.target.value='';}
+});
+$('#wf-trigger').addEventListener('change',e=>$('#interval-field').classList.toggle('hidden',e.target.value!=='interval'));
+$('#workflow-form').addEventListener('submit',async e=>{e.preventDefault();try{const spec=JSON.parse($('#wf-json').value),type=$('#wf-trigger').value;const trigger=type==='interval'?{type,every_minutes:Number($('#wf-minutes').value)}:{type};const result=await api('/api/workflows','POST',{name:$('#wf-name').value,spec,trigger,enabled:!generatedDraft,allow_external:!generatedDraft&&$('#wf-external').checked});$('#builder').classList.add('hidden');$('#advanced-builder').open=false;$('#workflow-form').reset();$('#wf-json').value='';generatedDraft=false;$('#ai-builder-note').textContent='';await refresh();if(result.webhook_secret)showModal('Connect an app',`<p class="subtle">Save this secret now. It is shown only once.</p><pre>${esc(result.webhook_secret)}</pre><details class="advanced"><summary>Connection details</summary><p class="subtle">POST /api/hooks/${esc(result.id)} with header x-growthveyra-secret.</p></details>`);else toast('Automation saved');}catch(e){toast(e.message);}});
+$('#connection-form').addEventListener('submit',async e=>{e.preventDefault();const button=e.target.querySelector('[type=submit]');button.disabled=true;try{await api('/api/connections','POST',{name:$('#connection-name').value,host:$('#connection-host').value,auth_type:$('#connection-type').value,secret:$('#connection-secret').value});e.target.reset();await refresh();toast('Connection saved');}catch(err){toast(err.message);}finally{button.disabled=false;}});
+$('#knowledge-form').addEventListener('submit',async e=>{e.preventDefault();try{await api('/api/knowledge','POST',{name:$('#knowledge-name').value,content:$('#knowledge-content').value});e.target.reset();await refresh();toast('Knowledge saved');}catch(e){toast(e.message);}});
+document.addEventListener('submit',async e=>{
+ if(e.target.id!=='run-input-form')return;
+ e.preventDefault();const form=e.target,id=form.dataset.id;
+ const input=Object.fromEntries([...form.querySelectorAll('[data-input-key]')].map(x=>[x.dataset.inputKey,x.value.trim()]));
+ const button=form.querySelector('[type="submit"]');button.disabled=true;
+ try{await api(`/api/workflows/${id}/run`,'POST',{input});closeModal();await refresh();toast('Automation started');}
+ catch(error){button.disabled=false;toast(error.message);}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#modal-cover').classList.contains('hidden'))closeModal();});
+document.addEventListener('click',async e=>{
+ const el=e.target.closest('[data-action],[data-nav]');if(!el)return;
+ if(el.dataset.nav){nav(el.dataset.nav);return;}
+ const action=el.dataset.action,id=el.dataset.id;
+ try{
+  if(action==='logout'){await api('/api/auth/logout','POST',{});auth(true);return;}
+  if(action==='refresh'){await refresh();toast('Updated');return;}
+  if(action==='open-builder'){openBuilder();return;}
+  if(action==='generate-workflow'){
+   const goal=$('#ai-builder-goal').value.trim();
+   if(goal.length<15){toast('Describe what the automation should do.');return;}
+   const button=el;button.disabled=true;const original=button.textContent;button.textContent='Creating draft…';
+   try{
+    const draft=await api('/api/blueprints','POST',{goal});
+    $('#wf-name').value=draft.name;$('#wf-json').value=JSON.stringify(draft.spec,null,2);
+    $('#wf-trigger').value='manual';$('#wf-trigger').dispatchEvent(new Event('change'));
+    $('#wf-external').checked=false;generatedDraft=true;
+    $('#ai-builder-note').textContent='Ready to review · saves paused';
+    $('#template-description').textContent='AI-generated draft. Review the steps before enabling.';
+    toast('Draft created. Review and save when ready.');
+   }finally{button.disabled=false;button.textContent=original;}
+   return;
+  }
+  if(action==='import-workflow'){$('#wf-import-file').click();return;}
+  if(action==='toggle-builder'){$('#builder').classList.contains('hidden')?openBuilder():$('#builder').classList.add('hidden');return;}
+  if(action==='validate-json'){JSON.parse($('#wf-json').value);toast('JSON syntax is valid. Saving also checks graph structure.');return;}
+  if(action==='close-modal'){closeModal();return;}
+  if(action==='view-run'){await showRun(id);return;}
+  if(action==='view-insights'){
+   const [metrics,maintenance]=await Promise.all([api('/api/insights'),api('/api/maintenance')]);
+   const rate=metrics.success_rate_percent===null?'—':metrics.success_rate_percent+'%';
+   const duration=metrics.average_completion_ms===null?'—':(metrics.average_completion_ms/1000).toFixed(1)+' sec';
+   const problems=(metrics.issues||[]).map(i=>item(i.name,i.failures+' failed run'+(i.failures===1?'':'s'))).join('');
+   const tokens=metrics.ai_usage?.reported_tokens;
+   const modelUsage=metrics.ai_usage;
+   const aiLabel=modelUsage?`${modelUsage.completed_calls} successful calls, ${tokens===null?'usage not reported':tokens+' reported tokens'}${modelUsage.calls_missing_usage?', '+modelUsage.calls_missing_usage+' without token data':''}`:'Unavailable';
+   const backups=maintenance.automatic_backups;
+   const backupLabel=!backups.enabled?'Off':backups.last_error?'Needs attention':
+    backups.last_success_ms?'Last completed '+dt(backups.last_success_ms):'Pending first backup';
+   showModal('Last 7 days',`<div class="metrics" aria-label="Execution health"><div class="metric"><label>Completed</label><b>${metrics.completed}</b></div><div class="metric"><label>Failed</label><b>${metrics.failed}</b></div><div class="metric"><label>Success rate</label><b>${rate}</b></div></div><p class="subtle">Average run time: ${duration}. Only completed and failed runs count toward the success rate.</p><p class="subtle">Automatic backups: ${esc(backupLabel)}</p><p class="subtle">AI usage: ${esc(aiLabel)}</p>${problems?'<h3>Needs attention</h3>'+problems:''}`);
+   return;
+  }
+  if(action==='execute'){startRun(id);return;}
+  if(action==='edit-workflow'){
+    const w=store.workflows.find(x=>x.id===id);if(!w)throw Error('Automation unavailable');
+    if(!window.GVDesigner)throw Error('Designer could not load. Reload this page.');
+    window.GVDesigner.open(w,{api,refresh,toast,connections:store.connections,workflows:store.workflows});return;
+  }
+  if(action==='toggle-workflow'){const wf=store.workflows.find(x=>x.id===id);await api(`/api/workflows/${id}`,'PATCH',{enabled:!wf.enabled});await refresh();return;}
+  if(action==='approve'||action==='reject'){if(action==='reject'&&!confirm('Reject this action?'))return;await api(`/api/approvals/${id}/${action}`,'POST',{});await refresh();toast(action==='approve'?'Approved':'Declined');return;}
+  if(action==='delete-connection'){if(!confirm('Remove this connection? Automations using it may stop.'))return;await api(`/api/connections/${id}`,'DELETE');await refresh();toast('Connection removed');return;}
+  if(action==='delete-knowledge'){if(!confirm('Delete this knowledge source?'))return;await api(`/api/knowledge/${id}`,'DELETE');await refresh();return;}
+  if(action==='retry-run'){await api(`/api/runs/${id}/retry`,'POST',{});closeModal();await refresh();toast('Run queued to retry');return;}
+  if(action==='cancel-run'){await api(`/api/runs/${id}/cancel`,'POST',{});$('#modal-cover').classList.add('hidden');await refresh();toast('Run stopped');return;}
+ }catch(err){toast(err.message);}
+});
+async function load(){store.templates=await api('/api/templates');$('#wf-template').innerHTML=store.templates.map((x,i)=>`<option value="${i}">${esc(x.name)}</option>`).join('');selectTemplate(0);await refresh();}
+(async()=>{try{const result=await api('/api/me');$('#account-email').textContent=result.user.email;auth(false);await load();}catch{authMode(false);auth(true);}})();
+setInterval(()=>{if(!$('#app').classList.contains('hidden'))refresh();},10000);
+</script></body></html>

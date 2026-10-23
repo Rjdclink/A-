@@ -1,0 +1,45 @@
+/* GrowthVeyra visual designer: isolated to avoid changing the concise dashboard. */
+.gv-overlay{position:fixed;inset:0;z-index:75;background:rgba(3,7,18,.83);backdrop-filter:blur(14px);display:grid;place-items:center;padding:18px;font-family:Inter,system-ui,sans-serif}
+.gv-window{width:min(1320px,100%);height:min(850px,95dvh);min-height:480px;display:flex;flex-direction:column;border:1px solid rgba(167,162,255,.23);border-radius:20px;background:linear-gradient(135deg,#142039,#0c1424 64%);box-shadow:0 30px 130px #020512ea;color:#f1f4ff;overflow:hidden}
+.gv-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 24px;border-bottom:1px solid #33415c;flex-wrap:wrap}
+.gv-brandline{display:flex;align-items:center;gap:13px;min-width:210px}
+.gv-top h2{margin:0;font-size:18px;letter-spacing:-.4px}.gv-top p{margin:3px 0 0;font-size:11px;color:#9caac5}
+.gv-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.gv-action{background:#24334d;color:#e9edff;border:1px solid #445575;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.gv-action:hover{background:#344766}.gv-action.primary{border-color:#928df5;background:linear-gradient(110deg,#6377ed,#9372e9);color:#fff}
+.gv-action.plain{background:transparent;border-color:transparent;color:#bfcafa}
+.gv-action:focus-visible,.gv-node:focus-visible{outline:2px solid #c8b7ff;outline-offset:3px}
+.gv-body{display:grid;grid-template-columns:minmax(0,1fr) 318px;min-height:0;flex:1}
+.gv-left{display:flex;flex-direction:column;min-width:0;min-height:0;background:radial-gradient(ellipse at 52% 23%,rgba(92,83,167,.11),transparent 75%)}
+.gv-toolbar{display:flex;align-items:center;gap:9px;padding:13px 19px;border-bottom:1px solid #293750;flex-wrap:wrap}
+.gv-toolbar label{font-size:11px;color:#aebcdb}
+.gv-toolbar select{max-width:175px;border:1px solid #435376;background:#16243b;color:#e8edff;border-radius:9px;padding:8px;font-size:12px}
+.gv-graph{min-height:0;overflow:auto;flex:1;position:relative;background-image:radial-gradient(rgba(137,158,206,.16) 1px,transparent 1px);background-size:22px 22px;scrollbar-color:#4b5478 transparent}
+.gv-stage{position:relative;min-width:100%;min-height:100%}
+.gv-links{position:absolute;top:0;left:0;pointer-events:none;overflow:visible}
+.gv-node{display:flex;flex-direction:column;gap:7px;align-items:flex-start;justify-content:center;text-align:left;position:absolute;width:208px;height:86px;padding:14px 16px;background:linear-gradient(150deg,#222f4b,#17243b);border:1px solid #475576;border-radius:14px;color:#ebeeff;box-shadow:0 10px 30px #040a1866;cursor:pointer;transition:border-color .15s,transform .15s}
+.gv-node:hover{border-color:#b5a6ff;transform:translateY(-2px)}.gv-node[aria-pressed="true"]{border-color:#ab97ff;box-shadow:0 0 0 2px #8d75f55a,0 12px 32px #0206128a}
+.gv-node-title{font-size:12px;font-weight:760;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.gv-node-kind{font-size:10px;color:#aebddb;letter-spacing:.2px}
+.gv-node-icon{display:grid;place-items:center;position:absolute;right:13px;top:13px;width:23px;height:23px;background:#3c3b72;border-radius:7px;color:#dad4ff;font-size:14px}
+.gv-node[data-type="end"] .gv-node-icon{background:#1d5246;color:#9be5ce}.gv-node[data-type="approval"] .gv-node-icon{background:#66485e;color:#ffd0e2}
+.gv-graph-label{position:absolute;left:21px;top:12px;font-size:10px;color:#91a2c5;letter-spacing:1.5px;pointer-events:none}
+.gv-right{border-left:1px solid #33415c;overflow-y:auto;background:linear-gradient(145deg,#131f34,#0c1629);padding:19px 20px}
+.gv-right h3{margin:0 0 15px;font-size:14px;letter-spacing:-.2px}
+.gv-right .gv-hint{font-size:11px;color:#93a5c3;line-height:1.5;margin:0 0 16px}
+.gv-field{display:block;font-size:11px;color:#c1cfe9;font-weight:650;margin-bottom:15px}
+.gv-field input,.gv-field textarea,.gv-field select{display:block;width:100%;margin-top:7px;padding:10px 11px;border-radius:10px;border:1px solid #3b4d6d;background:#0c1526;color:#f0f3ff;font-size:12px;line-height:1.5;resize:vertical}
+.gv-field textarea{min-height:95px}.gv-field input:focus,.gv-field textarea:focus,.gv-field select:focus{border-color:#ae9bff;outline:2px solid #ae9bff30}
+.gv-advanced{border-top:1px solid #35415a;margin-top:15px;padding-top:14px}.gv-advanced summary{font-size:11px;color:#bcaeff;cursor:pointer}
+.gv-foot{border-top:1px solid #33415c;padding:11px 19px;display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:47px}
+.gv-info{color:#a8b6d3;font-size:11px}.gv-error{color:#ffbcc6;font-weight:600;max-width:65%}
+.gv-version-list{display:grid;gap:7px;padding:12px 19px;max-height:185px;overflow:auto;border-bottom:1px solid #34435c;background:#111b2f}
+.gv-version{display:flex;justify-content:space-between;gap:12px;align-items:center;color:#ced9ed;font-size:12px;padding:5px 0}
+.gv-version small{color:#98a9c7;display:block;margin-top:4px}
+@media(max-width:850px){.gv-window{height:min(920px,96dvh)}.gv-body{grid-template-columns:minmax(0,1fr)}.gv-right{border-left:0;border-top:1px solid #384968;min-height:220px;max-height:37vh}.gv-left{min-height:280px}.gv-top{padding:14px 16px}.gv-window{min-height:0}.gv-overlay{padding:8px}}
+@media(max-width:460px){.gv-overlay{padding:0}.gv-window{height:100dvh;border-radius:0}.gv-top h2{font-size:16px}.gv-action{padding:8px 10px}.gv-toolbar{padding:9px}.gv-right{padding:13px}.gv-node{width:184px}.gv-foot{padding:10px}}
+
+.gv-preview{border-bottom:1px solid #33415c;background:linear-gradient(110deg,#152640,#151f37);padding:14px 21px;max-height:275px;overflow:auto}
+.gv-preview[hidden]{display:none!important}.gv-preview-head{display:flex;flex-wrap:wrap;gap:7px 16px;align-items:baseline;margin-bottom:11px;font-size:12px}
+.gv-preview-head strong{color:#bce9e0}.gv-preview-head span{color:#94a6c8;font-size:11px}.gv-preview-fields{display:flex;gap:9px;flex-wrap:wrap}.gv-preview-fields .gv-field{flex:1 1 160px;max-width:280px}
+.gv-preview-results{padding:9px 0 0;color:#c9d7ef;font-size:12px}.gv-preview-results p{margin:7px 0;color:#9db3cf}.gv-preview-results pre{max-height:100px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#c5e6db}

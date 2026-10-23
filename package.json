@@ -1,6 +1,6 @@
 {
   "name": "a-plus-commerce-ai",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,6 +11,22 @@
     "test": "node --test test/*.test.mjs",
     "migrate": "node scripts/migrate-json.mjs",
     "backup": "node scripts/backup.mjs",
-    "check": "node --check src/server.mjs && node --check src/api.mjs && node --check src/ledger.mjs && node --check src/experiments.mjs && node --check src/shopify.mjs && node --check scripts/migrate-json.mjs && node --check scripts/backup.mjs && npm test"
+    "check": "node --check src/server.mjs && node --check src/api.mjs && node --check src/ledger.mjs && node --check src/experiments.mjs && node --check src/shopify.mjs && node --check scripts/migrate-json.mjs && node --check scripts/backup.mjs && node --check src/recovery.mjs && node --check src/unified.mjs && node --check src/orchestration.mjs && node --check src/neon.mjs && node --check public/app.js && npm test",
+    "test:upstream": "node --test integrations/automation/test/*.test.mjs integrations/recovery/test/*.test.mjs",
+    "verify": "npm run check && npm run test:upstream"
+  },
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "imapflow": "^1.0.195",
+    "luxon": "^3.7.2",
+    "mailparser": "^3.7.4",
+    "nodemailer": "^7.0.9",
+    "pg": "^8.16.3",
+    "qrcode": "^1.5.4",
+    "robots-parser": "^3.0.1",
+    "undici": "^7.16.0"
+  },
+  "devDependencies": {
+    "smtp-server": "^3.20.2"
   }
 }

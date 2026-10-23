@@ -1,0 +1,18 @@
+.commerce-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 16px}
+.commerce-card,.commerce-plan{background:linear-gradient(145deg,#17243c,#111c2e);border:1px solid #364763;border-radius:14px;padding:15px;display:flex;flex-direction:column;gap:14px;justify-content:space-between;min-width:0;transition:border-color .17s ease}
+.commerce-card:hover,.commerce-plan:hover{border-color:#9286e8}
+.commerce-label{display:flex;flex-direction:column;gap:5px;min-width:0}
+.commerce-name{font-size:13px;color:#f0f3ff;font-weight:740;line-height:1.45;overflow-wrap:anywhere}
+.commerce-category{font-size:11px;color:#9eafcc;line-height:1.5}
+.commerce-connect{background:#111e32;padding:18px;border:1px solid #746bad85;border-radius:13px;margin:14px 0}
+.commerce-message{color:#9dadc6;font-size:12px;line-height:1.6;margin:8px 0}
+.commerce-installed{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:15px 0;border-bottom:1px solid #35425d}
+.commerce-installed:last-child{border-bottom:0}
+.commerce-state{font-size:11px;color:#bdc8e2;border:1px solid #52617e;padding:5px 9px;border-radius:999px}
+.commerce-state.verified{border-color:#4f8f88;color:#bbefe0}
+.commerce-plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.commerce-price{color:#d4c5ff;font-size:22px;font-weight:800;letter-spacing:-.5px;margin:0}
+#catalog-connected .btn{white-space:nowrap}
+@media(max-width:940px){.commerce-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:690px){.commerce-grid,.commerce-plans{grid-template-columns:1fr}.commerce-installed{flex-wrap:wrap}.commerce-card{gap:10px}}
+@media(prefers-reduced-motion:reduce){.commerce-card,.commerce-plan{transition:none}}
