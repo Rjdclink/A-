@@ -8,6 +8,7 @@ import {Ledger} from '../../src/ledger.mjs';
 import {createHandler} from '../../src/api.mjs';
 import {createUnified} from '../../src/unified.mjs';
 import {advisory} from '../../src/ai.mjs';
+import {neonTLSConnectionString} from '../../src/neon.mjs';
 
 const token=()=>randomBytes(32).toString('base64url');
 const schema="CREATE TABLE IF NOT EXISTS aplus_function_state (workspace TEXT PRIMARY KEY, commerce BYTEA, automation BYTEA, admin_token TEXT NOT NULL, ingest_token TEXT NOT NULL, pseudonym_key TEXT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now())";
@@ -57,7 +58,7 @@ async function forward(request,dir,saved,env){
  }
 }
 export function createNeonApp({pool,env=process.env}={}){
- const db=pool||new pg.Pool({connectionString:env.DATABASE_URL,max:2,connectionTimeoutMillis:8000,idleTimeoutMillis:30000});
+ const db=pool||new pg.Pool({connectionString:neonTLSConnectionString(env.DATABASE_URL),max:2,connectionTimeoutMillis:8000,idleTimeoutMillis:30000});
  if(db.on)db.on('error',e=>console.error('Neon connection error:',e?.code||e?.name));
  let ready;
  const initialize=()=>{
