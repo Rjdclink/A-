@@ -18,9 +18,9 @@ async function api(path,method='GET',payload){
 function show(view){
  S.view=view;document.querySelectorAll('.view').forEach(x=>x.classList.toggle('hidden',x.id!=='view-'+view));
  document.querySelectorAll('.nav').forEach(x=>{x.classList.toggle('active',x.dataset.view===view);x.setAttribute('aria-current',x.dataset.view===view?'page':'false');});
- txt('currentView',({overview:'Overview',commerce:'Commerce',recovery:'Revenue recovery',automations:'Automations',apps:'Connected apps',studio:'Advanced studio',activity:'Activity & insights',settings:'Settings'})[view]);
+ txt('currentView',({overview:'Overview',commerce:'Commerce',recovery:'Revenue recovery',automations:'Automations',apps:'Connected apps',advanced:'Advanced Controls',studio:'Workflow Studio',activity:'Activity & insights',settings:'Settings'})[view]);
  if(view==='studio')sendStudioAuth();if(!S.connected)return;
- const loads={recovery:loadRecovery,automations:loadAutomation,apps:loadApps,activity:loadActivity,settings:loadSettings};
+ const loads={recovery:loadRecovery,automations:loadAutomation,apps:loadApps,advanced:loadAdvanced,activity:loadActivity,settings:loadSettings};
  loads[view]?.().catch(notice);
 }
 function workspacePanel(open){if(!$('workspacePanel'))return;$('workspacePanel').classList.toggle('hidden',!open);$('toggleWorkspace')?.setAttribute('aria-expanded',String(open));}
@@ -171,3 +171,127 @@ async function start(){
  }catch(e){console.error('Dashboard startup failed:',e.message);workspacePanel(true);}
 }
 start();
+
+
+// Advanced tools are grouped in one section to avoid burdening the main dashboard.
+async function loadAdvanced(){
+ const result=await Promise.allSettled([
+  api('/api/growth/workflows'),api('/api/privacy/requests'),
+  api('/api/growth/billing/plans'),api('/api/growth/billing'),
+  api('/api/growth/audit'),api('/api/neon/history'),
+  api('/api/growth/maintenance'),api('/api/integrations/status')
+ ]);
+ const val=i=>result[i].status==='fulfilled'?result[i].value:null;
+ const provider=val(7);
+ $('providerStatus').replaceChildren();
+ if(!provider?.providers)blank('providerStatus','Provider status currently unavailable.');
+ else {
+  const titles={email:'Email & outreach',ai:'AI services',square:'Square payments',shopify:'Shopify commerce',neon:'Neon data'};
+  const descriptions={configured:'Credentials configured · live provider verification required',connected:'Connected to database',configuration_incomplete:'Additional setup required',not_configured:'Not configured',unavailable:'Configured but unavailable'};
+  for(const [key,name] of Object.entries(titles)){
+   const state=provider.providers[key]||'not_configured';
+   $('providerStatus').append(line(name,descriptions[state]||state));
+  }
+ }
+ const workflows=val(0);
+ const selector=$('workflowTransferId');selector.replaceChildren();
+ const defaultOption=node('option','Choose a workflow');defaultOption.value='';selector.append(defaultOption);
+ if(Array.isArray(workflows))for(const w of workflows){
+  const option=node('option',w.name);option.value=w.id;selector.append(option);
+ }
+ const privacy=val(1);
+ $('privacyRequests').replaceChildren();
+ if(!privacy?.requests?.length)blank('privacyRequests',privacy?'No pending data requests.':'Data requests currently unavailable.');
+ else for(const item of privacy.requests){
+  const requestId=item.request_id||item.id;
+  $('privacyRequests').append(line('Customer data request',String(requestId),[btn('Mark delivered',async()=>{
+   if(!confirm('Have you already provided the requested data to the merchant/customer?'))return;
+   try{await api('/api/privacy/requests/complete','POST',{requestId,deliveryConfirmed:true});await loadAdvanced();}
+   catch(e){notice(e);}
+  })]));
+ }
+ const plans=val(2);
+ $('billingSelect').replaceChildren();
+ const placeholder=node('option','Choose a plan');placeholder.value='';$('billingSelect').append(placeholder);
+ if(Array.isArray(plans)&&plans.length){
+  for(const plan of plans){const opt=node('option',plan.name||plan.id);opt.value=plan.id;$('billingSelect').append(opt);}
+  txt('billingPlans',plans.length+' subscription plan'+(plans.length===1?'':'s')+' available.');
+ }else txt('billingPlans','No paid subscription plan is configured.');
+ const billing=val(3);
+ if(billing)txt('billingActionStatus','Current status: '+(billing.status||'free')+(billing.plan?' · '+billing.plan:''));
+ $('auditTrail').replaceChildren();
+ const audits=val(4);
+ if(!Array.isArray(audits)||!audits.length)blank('auditTrail','No recorded administrative actions.');
+ else for(const a of audits.slice(0,30))$('auditTrail').append(line(String(a.action||'Activity'),String(a.target||'')+(a.actor?' · '+a.actor:''),[],a.created_at?new Date(a.created_at).toLocaleString():''));
+ $('neonHistory').replaceChildren();
+ const history=val(5);
+ if(!history?.events?.length)blank('neonHistory',history?'No archived activity yet.':'Neon activity history is not available.');
+ else for(const e of history.events.slice(0,30))$('neonHistory').append(line(e.kind||'Event',e.id||'',[],e.created_at?new Date(Number(e.created_at)).toLocaleString():''));
+ const maintenance=val(6);
+ txt('advancedBackup',maintenance?.automatic_backups?.enabled
+  ?'Automatic snapshots are configured. Last successful backup: '+(maintenance.automatic_backups.last_success_ms?new Date(maintenance.automatic_backups.last_success_ms).toLocaleString():'Not yet completed')
+  : 'Local backup automation is not enabled. Neon PostgreSQL retains the application state for this deployment.');
+}
+$('refreshAdvanced').addEventListener('click',()=>loadAdvanced().catch(notice));
+$('refreshConnections').addEventListener('click',()=>loadAdvanced().catch(notice));
+$('leadScoreForm').addEventListener('submit',async event=>{
+ event.preventDefault();
+ try{
+  const events=[...new FormData(event.currentTarget).getAll('events')];
+  const r=await api('/api/score','POST',{email:$('leadScoreEmail').value.trim(),events});
+  txt('leadScoreResult','Buying-intent score: '+r.score+' / 100');
+ }catch(e){txt('leadScoreResult',e.message);}
+});
+$('workflowExport').addEventListener('click',async()=>{
+ const id=$('workflowTransferId').value;
+ if(!id)return txt('workflowTransferStatus','Choose a workflow.');
+ try{
+  const exported=await api('/api/growth/workflows/'+encodeURIComponent(id)+'/export');
+  $('workflowExportData').value=JSON.stringify(exported,null,2);
+  txt('workflowTransferStatus','Workflow definition ready to copy.');
+ }catch(e){txt('workflowTransferStatus',e.message);}
+});
+$('workflowImport').addEventListener('click',async()=>{
+ let data;
+ try{data=JSON.parse($('workflowExportData').value);}catch{return txt('workflowTransferStatus','Paste a valid workflow JSON definition.');}
+ try{
+  const r=await api('/api/growth/workflows/import','POST',data);
+  txt('workflowTransferStatus','Imported '+r.name+'. Review and enable the disabled workflow when ready.');
+  await loadAdvanced();
+ }catch(e){txt('workflowTransferStatus',e.message);}
+});
+$('privacyExport').addEventListener('click',async()=>{
+ const subjectId=$('privacySubject').value.trim();
+ if(!subjectId)return txt('privacyResult','Enter the exact customer identifier.');
+ try{
+  const result=await api('/api/privacy/export','POST',{subjectId});
+  txt('privacyResult',JSON.stringify(result,null,2));
+ }catch(e){txt('privacyResult',e.message);}
+});
+$('privacyErase').addEventListener('click',async()=>{
+ const subjectId=$('privacySubject').value.trim();
+ if(!subjectId)return txt('privacyResult','Enter the exact customer identifier.');
+ if(!confirm('Permanently erase records belonging to this customer? This cannot be undone.'))return;
+ try{
+  const result=await api('/api/privacy/erase','POST',{subjectId});
+  txt('privacyResult','Customer erasure completed. Matching records deleted: '+result.deleted);
+ }catch(e){txt('privacyResult',e.message);}
+});
+$('billingCheckout').addEventListener('click',async()=>{
+ const plan=$('billingSelect').value;
+ if(!plan)return txt('billingActionStatus','Choose a plan first.');
+ try{
+  const result=await api('/api/growth/billing/checkout','POST',{plan});
+  if(!result.url)throw Error('Checkout link unavailable.');
+  const target=new URL(result.url);
+  if(target.protocol!=='https:')throw Error('Invalid checkout destination.');
+  location.assign(target.href);
+ }catch(e){txt('billingActionStatus',e.message);}
+});
+$('billingCancel').addEventListener('click',async()=>{
+ if(!confirm('Cancel the active subscription?'))return;
+ try{
+  const result=await api('/api/growth/billing/cancel','POST',{});
+  txt('billingActionStatus','Subscription cancellation status: '+result.status);
+ }catch(e){txt('billingActionStatus',e.message);}
+});

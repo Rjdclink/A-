@@ -18,14 +18,14 @@ function mailer(env){
   finally{transport.close();}
  };
 }
-export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOMATION_DB_PATH||(env.DB_PATH?env.DB_PATH+'.automation.sqlite':'data/a-plus.automation.sqlite')}){
- const growth=createApp({dbPath:automationDbPath,env:{...env,ALLOW_SIGNUP:'false'},autoStart:true});
+export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOMATION_DB_PATH||(env.DB_PATH?env.DB_PATH+'.automation.sqlite':'data/a-plus.automation.sqlite'),autoStart=true,neonIntegration=null}){
+ const growth=createApp({dbPath:automationDbPath,env:{...env,ALLOW_SIGNUP:'false'},autoStart});
  const orchestration=createOrchestration(ledger.db,growth.db);
- const neon=createNeonIntegration({env});
+ const neon=neonIntegration||createNeonIntegration({env});
  const recovery=createRecovery(ledger.db,{mail:mailer(env),onOpportunity:async(workspace,site)=>{
   const evidence={opportunity:{website:site.website,summary:site.analysis?.summary||'',score:site.analysis?.priority_score??null}};
   await orchestration.emit(workspace,'recovery.analysis',evidence);
-  void neon.record(workspace,'recovery.analysis','recovery:'+site.id+':'+site.updated_at,evidence.opportunity);
+  await neon.record(workspace,'recovery.analysis','recovery:'+site.id+':'+site.updated_at,evidence.opportunity);
  }});
  // The GrowthVeyra server is loopback-only and is never exposed as another public application.
  growth.server.listen(0,'127.0.0.1');
@@ -65,6 +65,20 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   return {status:upstream.status,data:parsed};
  }
  async function handle(workspace,path,method,payload){
+  if(path==='integrations/status'&&method==='GET'){
+   const activeEmail=Boolean(env.RECOVERY_SMTP_HOST&&env.RECOVERY_SMTP_USER&&env.RECOVERY_SMTP_PASS&&env.RECOVERY_SMTP_FROM);
+   const square=Boolean(env.SQUARE_ACCESS_TOKEN&&env.SQUARE_LOCATION_ID);
+   const shops=(()=>{try{return JSON.parse(env.SHOPIFY_SHOPS_JSON||'{}');}catch{return {};}})();
+   const shopReady=Boolean(env.SHOPIFY_SECRET&&Object.keys(shops).length&&env.SHOPIFY_ANALYTICS_BASIS_ACKNOWLEDGED==='true');
+   const dbStatus=await neon.status(workspace);
+   return {status:200,data:{providers:{
+    email:activeEmail?'configured':'not_configured',
+    ai:env.AI_API_KEY?'configured':'not_configured',
+    square:square?'configured':env.SQUARE_ACCESS_TOKEN?'configuration_incomplete':'not_configured',
+    shopify:shopReady?'configured':env.SHOPIFY_SECRET||Object.keys(shops).length?'configuration_incomplete':'not_configured',
+    neon:dbStatus.connected?'connected':dbStatus.configured?'unavailable':'not_configured'
+   },note:'Configured means credentials were supplied, not that external providers have verified them.'}};
+  }
   if(path==='neon/status'&&method==='GET')return {status:200,data:await neon.status(workspace)};
   if(path==='neon/history'&&method==='GET'){
    try{return {status:200,data:await neon.history(workspace)};}
@@ -104,17 +118,17 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   const raw=await upstream.text();let data;try{data=JSON.parse(raw);}catch{data={error:'Invalid upstream response'};}
   return {status:upstream.status,data};
  }
- const interval=setInterval(()=>recovery.tick().catch(e=>console.error('Recovery scheduler:',e.message)),60000);
- interval.unref();
+ const interval=autoStart?setInterval(()=>recovery.tick().catch(e=>console.error('Recovery scheduler:',e.message)),60000):null;
+ interval?.unref();
  async function close(){
-  clearInterval(interval);growth.stop();
+  if(interval)clearInterval(interval);growth.stop();
   await new Promise(resolve=>growth.server.close(resolve));growth.db.close();await neon.close();
  }
  async function emit(workspace,event,data={}){
   const queued=await orchestration.emit(workspace,event,data);
   if(neon.configured&&data.event_id){
    const filtered={...data};delete filtered.event_id;
-   void neon.record(workspace,event,'commerce:'+data.event_id,filtered);
+   await neon.record(workspace,event,'commerce:'+data.event_id,filtered);
   }
   return queued;
  }
