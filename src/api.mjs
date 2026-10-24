@@ -1,5 +1,5 @@
 import {readFile} from 'node:fs/promises';
-import {validateWorkspace,authorized,createLimiter} from './security.mjs';
+import {validateWorkspace,authorized,createLimiter,publicRouteNeedsAdmin} from './security.mjs';
 import {scoreLead,recommend} from './analytics.mjs';
 import {verifyShopify,validateShopDomain,shopifyOrder} from './shopify.mjs';
 
@@ -144,7 +144,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
    if(publicDashboard&&w!==publicWorkspace)return response(res,403,{error:'Workspace unavailable'});
    if(!Object.hasOwn(tenants,w))return response(res,401,{error:'Unauthorized'});
    const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname));
-   if(!publicDashboard&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
+   if((!publicDashboard||publicRouteNeedsAdmin(req.method,url.pathname))&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
    if(unified&&req.method==='GET'&&url.pathname==='/api/advanced/summary'){
     const entries=[
      ['workflows','growth/workflows'],
@@ -162,7 +162,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
      }catch{return [name,null];}
     }));
     const data=Object.fromEntries(results);
-    data.privacy={requests:ledger.pendingPrivacyRequests(w)};
+    data.privacy=publicDashboard&&!bearerFor(req,tenants,w,'adminToken')?{requests:[],restricted:true}:{requests:ledger.pendingPrivacyRequests(w)};
     return response(res,200,data);
    }
    if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/')||url.pathname.startsWith('/api/integrations/'))){

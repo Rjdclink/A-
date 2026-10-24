@@ -8,6 +8,18 @@ export function loadTenants(env=process.env){
  return {default:{adminToken:env.ADMIN_TOKEN,ingestToken:env.INGEST_TOKEN}};
 }
 
+/** Public buyer-review dashboards may accept new lead submissions, but must not
+ * disclose stored contact details or permit unverified outreach and privacy actions.
+ * These routes still require the workspace admin bearer token in public mode.
+ */
+export function publicRouteNeedsAdmin(method,pathname){
+ if(typeof pathname!=='string')return false;
+ if(pathname==='/api/privacy'||pathname.startsWith('/api/privacy/'))return true;
+ if(pathname==='/api/recovery/leads')return method!=='POST';
+ if(pathname.startsWith('/api/recovery/leads/'))return true;
+ return pathname==='/api/recovery/outreach'||pathname.startsWith('/api/recovery/outreach/');
+}
+
 export function safeEventIdentity(existing,incoming){
  if(existing.id!==incoming.id||existing.workspace!==incoming.workspace)return 'distinct';
  const fields=['type','value','currency','customerId','campaign','consent'];
