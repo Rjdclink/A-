@@ -45,7 +45,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
  if(!ledger||!tenants||!adviser)throw Error('Missing server dependencies');
  if(publicDashboard&&(!Object.hasOwn(tenants,publicWorkspace)||validateWorkspace(publicWorkspace)!==publicWorkspace))throw Error('Public workspace is not configured');
  const shop=configureShopify(shopify);
- const supportService=support||createSupport(ledger.db,{responder:createSupportResponder()});
+ const supportService=support||(ledger.db?createSupport(ledger.db,{responder:createSupportResponder()}):null);
  const supportFrames=supportFrameOrigins(embedOrigins);
  const supportRequests=createLimiter({max:12,windowMs:60000,maxKeys:3000});
  const requests=createLimiter({max:150,windowMs:60000,maxKeys:3000});
@@ -153,7 +153,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
     if(topic==='customers/redact'&&!Array.isArray(data.orders_to_redact))fail(400,'Invalid customer redaction payload');
     if(topic==='customers/data_request'&&(data.customer?.id==null||data.data_request?.id==null))fail(400,'Invalid customer data request');
     if(topic==='shop/redact'||topic==='app/uninstalled'){
-     ledger.eraseWorkspace(workspace,{shopDomain:domain});supportService.eraseWorkspace(workspace);unified?.recovery.eraseWorkspace(workspace);unified?.erase(workspace);return response(res,200,{received:true});
+     ledger.eraseWorkspace(workspace,{shopDomain:domain});supportService?.eraseWorkspace(workspace);unified?.recovery.eraseWorkspace(workspace);unified?.erase(workspace);return response(res,200,{received:true});
     }
     if(topic==='customers/redact'){
      if(data.customer?.id!=null)ledger.eraseCustomer(workspace,String(data.customer.id));
@@ -190,6 +190,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    const needsAdmin=isSupport?!publicSupport:(!publicDashboard||publicRouteNeedsAdmin(req.method,url.pathname));
    if(needsAdmin&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
    if(isSupport){
+    if(!supportService)return response(res,503,{error:'Support unavailable'});
     if(publicSupport&&req.method==='POST'&&!supportRequests(peer+':'+w))return response(res,429,{error:'Support request limit reached'});
     const payload=['POST','PATCH','PUT'].includes(req.method)?await parseJSON(req,10000):null;
     if(req.method==='GET'&&url.pathname==='/api/support/config')return response(res,200,supportService.settings(w));
