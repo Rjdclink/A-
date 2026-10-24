@@ -14,6 +14,19 @@ A minimal, privacy-conscious foundation for e-commerce conversion measurement, r
 - **Same AI as GrowthVeyra:** Vireonix \`auto\` chat-completions endpoint, only aggregate commerce metrics passed to the model; AI proposals are advisory and never send marketing or purchase ads autonomously.
 - **Testing:** dependency-free Node test suite, HTTP integration tests, migration tests and GitHub Actions workflow configuration. Github Actions may show startup failures due to account configuration; verify locally.
 
+## Customer Service Hub (new experimental module)
+
+A+ now includes a hosted customer chat page, **approved-knowledge responses**, workspace-isolated conversations, service tickets, staff replies, a support console, basic service analytics, customer-facing settings and support data export/erasure. These are additions to the commerce intelligence and automation products, not replacements.
+
+- **Staff console:** \`/support-admin\` (workspace + administrator token; never put tokens in merchant sites).
+- **Customer page:** \`/support?workspace=default\` (workspace selector is publicly visible by design).
+- **AI:** off by default; an existing Vireonix-compatible model can optionally paraphrase matched approved articles after merchant configuration and per-message visitor opt-in. Without a knowledge match, customer requests are queued for human review. The platform does not manufacture order-status information.
+- **Embedding:** frame embedding is disabled by default, enabled only for workspace-scoped HTTPS origins.
+- **Availability:** 24/7 capability depends on actual hosting and monitoring; in-app agent replies do not deliver email or SMS notifications.
+- **Not yet integrated:** voice, social inbox, external email/SMS, account-authenticated Shopify order actions, CRM sync, appointment booking, support-specific subscriptions or verified regulatory compliance.
+
+Full configuration, API contracts, privacy limitations, and capability gap matrix are in [Customer Service Hub documentation](docs/CUSTOMER_SUPPORT.md).
+
 ## Local setup
 
 Requires Node.js **22.16+** (the built-in \`node:sqlite\` module in Node 22 remains experimental).
