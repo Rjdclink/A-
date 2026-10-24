@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {validateWorkspace,authorized,createLimiter,publicRouteNeedsAdmin} from './security.mjs';
 import {scoreLead,recommend} from './analytics.mjs';
 import {verifyShopify,validateShopDomain,shopifyOrder} from './shopify.mjs';
+import {createSupport,createSupportResponder} from './support.mjs';
 
 const securityHeaders={
  'cache-control':'no-store',
@@ -18,15 +19,35 @@ function requiredWorkspace(url){const workspace=url.searchParams.get('workspace'
 function bearerFor(req,tenants,workspace,role){return Object.hasOwn(tenants,workspace)&&authorized(req.headers.authorization,tenants[workspace][role]);}
 function safeStatus(e){if(Number.isInteger(e?.status)&&e.status>=400&&e.status<600)return e.status;return /Invalid|Unsupported|consent|required|precision/i.test(e.message)?400:500;}
 function fail(status,message){const e=Error(message);e.status=status;throw e;}
+function supportFrameOrigins(value){
+ if(!value)return {};
+ const parsed=JSON.parse(value);
+ if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Invalid SUPPORT_EMBED_ORIGINS_JSON');
+ const result=Object.create(null);
+ for(const [workspace,origins] of Object.entries(parsed)){
+  validateWorkspace(workspace);
+  if(!Array.isArray(origins)||origins.length>20)throw Error('Invalid support embed origins');
+  result[workspace]=origins.map(origin=>{
+   if(typeof origin!=='string'||origin.length>250)throw Error('Invalid support embed origin');
+   const parsedOrigin=new URL(origin);
+   if(parsedOrigin.origin!==origin||(parsedOrigin.protocol!=='https:'&&!(parsedOrigin.protocol==='http:'&&['localhost','127.0.0.1'].includes(parsedOrigin.hostname))))throw Error('Support embed origins must be exact HTTPS origins');
+   return origin;
+  });
+ }
+ return result;
+}
 function configureShopify(options){
  const {secret,shops={},allowOrders=false}=options||{};
  const safe=Object.create(null),used=new Set();for(const [domain,workspace]of Object.entries(shops)){validateShopDomain(domain);validateWorkspace(workspace);if(used.has(workspace))throw Error('Each Shopify shop must have its own workspace');used.add(workspace);safe[domain]=workspace;}
  return {secret,shops:safe,allowOrders};
 }
-export function createHandler({ledger,tenants,adviser,shopify,unified,publicDashboard=false,publicWorkspace='default'}={}){
+export function createHandler({ledger,tenants,adviser,shopify,unified,support=null,embedOrigins=process.env.SUPPORT_EMBED_ORIGINS_JSON||'',publicDashboard=false,publicWorkspace='default'}={}){
  if(!ledger||!tenants||!adviser)throw Error('Missing server dependencies');
  if(publicDashboard&&(!Object.hasOwn(tenants,publicWorkspace)||validateWorkspace(publicWorkspace)!==publicWorkspace))throw Error('Public workspace is not configured');
  const shop=configureShopify(shopify);
+ const supportService=support||createSupport(ledger.db,{responder:createSupportResponder()});
+ const supportFrames=supportFrameOrigins(embedOrigins);
+ const supportRequests=createLimiter({max:12,windowMs:60000,maxKeys:3000});
  const requests=createLimiter({max:150,windowMs:60000,maxKeys:3000});
  const aiRequests=createLimiter({max:8,windowMs:60000,maxKeys:3000});
  return async(req,res)=>{
@@ -38,6 +59,26 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
     ledger.db.prepare('SELECT 1').get();return response(res,200,{status:'ok'});
    }
    if(req.method==='GET'&&url.pathname==='/api/dashboard-config')return response(res,200,{public:Boolean(publicDashboard),workspace:publicDashboard?publicWorkspace:null});
+   if(req.method==='GET'&&['/support','/support-admin','/support.js','/support-admin.js','/support.css'].includes(url.pathname)){
+    if(url.pathname==='/support'){
+     const workspace=requiredWorkspace(url);
+     if(!Object.hasOwn(tenants,workspace)||(publicDashboard&&workspace!==publicWorkspace))return response(res,404,{error:'Not found'});
+    }
+    const filenames={'/support':'support.html','/support-admin':'support-admin.html','/support.js':'support.js','/support-admin.js':'support-admin.js','/support.css':'support.css'};
+    const path=filenames[url.pathname];
+    const asset=await readFile(new URL('../public/'+path,import.meta.url));
+    const isHtml=path.endsWith('.html');
+    const headers={...securityHeaders,'content-type':isHtml?'text/html; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'};
+    if(isHtml){
+     let frames="'none'";
+     if(url.pathname==='/support'){
+      const origins=supportFrames[requiredWorkspace(url)]||[];
+      if(origins.length){frames="'self' "+origins.join(' ');delete headers['x-frame-options'];}
+     }
+     headers['content-security-policy']="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors "+frames+"; form-action 'self'; object-src 'none'";
+    }
+    res.writeHead(200,headers);res.end(asset);return;
+   }
    if(req.method==='GET'&&(url.pathname==='/'||url.pathname==='/app.js')){
     const isScript=url.pathname==='/app.js';const file=isScript?'../public/app.js':'../public/index.html';
     let output=await readFile(new URL(file,import.meta.url));
@@ -112,7 +153,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
     if(topic==='customers/redact'&&!Array.isArray(data.orders_to_redact))fail(400,'Invalid customer redaction payload');
     if(topic==='customers/data_request'&&(data.customer?.id==null||data.data_request?.id==null))fail(400,'Invalid customer data request');
     if(topic==='shop/redact'||topic==='app/uninstalled'){
-     ledger.eraseWorkspace(workspace,{shopDomain:domain});unified?.recovery.eraseWorkspace(workspace);unified?.erase(workspace);return response(res,200,{received:true});
+     ledger.eraseWorkspace(workspace,{shopDomain:domain});supportService.eraseWorkspace(workspace);unified?.recovery.eraseWorkspace(workspace);unified?.erase(workspace);return response(res,200,{received:true});
     }
     if(topic==='customers/redact'){
      if(data.customer?.id!=null)ledger.eraseCustomer(workspace,String(data.customer.id));
@@ -144,7 +185,37 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
    if(publicDashboard&&w!==publicWorkspace)return response(res,403,{error:'Workspace unavailable'});
    if(!Object.hasOwn(tenants,w))return response(res,401,{error:'Unauthorized'});
    const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname));
-   if((!publicDashboard||publicRouteNeedsAdmin(req.method,url.pathname))&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
+   const isSupport=url.pathname.startsWith('/api/support/');
+   const publicSupport=(req.method==='GET'&&url.pathname==='/api/support/config')||(req.method==='POST'&&['/api/support/chat','/api/support/thread'].includes(url.pathname));
+   const needsAdmin=isSupport?!publicSupport:(!publicDashboard||publicRouteNeedsAdmin(req.method,url.pathname));
+   if(needsAdmin&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
+   if(isSupport){
+    if(publicSupport&&req.method==='POST'&&!supportRequests(peer+':'+w))return response(res,429,{error:'Support request limit reached'});
+    const payload=['POST','PATCH','PUT'].includes(req.method)?await parseJSON(req,10000):null;
+    if(req.method==='GET'&&url.pathname==='/api/support/config')return response(res,200,supportService.settings(w));
+    if(req.method==='GET'&&url.pathname==='/api/support/settings')return response(res,200,supportService.settings(w));
+    if(req.method==='PATCH'&&url.pathname==='/api/support/settings')return response(res,200,supportService.updateSettings(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/chat'){
+     const created=!payload.ticketId;
+     return response(res,created?201:200,await supportService.receive(w,payload));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/support/thread')return response(res,200,supportService.thread(w,payload));
+    if(req.method==='GET'&&url.pathname==='/api/support/articles')return response(res,200,{articles:supportService.listArticles(w)});
+    if(req.method==='POST'&&url.pathname==='/api/support/articles')return response(res,201,{article:supportService.addArticle(w,payload)});
+    const article=url.pathname.match(/^\/api\/support\/articles\/([0-9a-f-]{36})$/i);
+    if(article&&req.method==='PATCH')return response(res,200,{article:supportService.editArticle(w,article[1],payload)});
+    if(article&&req.method==='DELETE')return response(res,200,{deleted:supportService.removeArticle(w,article[1])});
+    if(req.method==='GET'&&url.pathname==='/api/support/metrics')return response(res,200,supportService.metrics(w));
+    if(req.method==='GET'&&url.pathname==='/api/support/tickets')return response(res,200,{tickets:supportService.tickets(w,{status:url.searchParams.get('status')||undefined})});
+    const reply=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})\/replies$/i);
+    if(reply&&req.method==='POST')return response(res,201,supportService.staffReply(w,reply[1],payload));
+    const ticket=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})$/i);
+    if(ticket&&req.method==='GET')return response(res,200,supportService.ticketDetail(w,ticket[1]));
+    if(ticket&&req.method==='PATCH')return response(res,200,{ticket:supportService.updateTicket(w,ticket[1],payload)});
+    if(req.method==='POST'&&url.pathname==='/api/support/privacy/export')return response(res,200,supportService.exportEmail(w,payload?.email));
+    if(req.method==='POST'&&url.pathname==='/api/support/privacy/erase')return response(res,200,{deleted:supportService.eraseEmail(w,payload?.email)});
+    return response(res,404,{error:'Not found'});
+   }
    if(unified&&req.method==='GET'&&url.pathname==='/api/advanced/summary'){
     const entries=[
      ['workflows','growth/workflows'],
