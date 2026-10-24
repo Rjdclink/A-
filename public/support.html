@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><title>A+ · Customer support</title>
+<link rel="stylesheet" href="/support.css"><script src="/support.js" defer></script></head>
+<body class="support-customer">
+<main class="chat-shell" aria-label="Customer support">
+<header class="chat-head"><div class="brand-logo">A+</div><div><strong id="businessName">Customer support</strong><p id="businessHours">We're here to help.</p></div><button class="quiet" type="button" id="newChat">New chat</button></header>
+<div class="chat-stream" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+<div id="notice" class="notice" role="status"></div>
+<form id="chatForm" class="chat-form">
+<div class="customer-fields"><label>Your name <span>(optional)</span><input name="name" id="visitorName" maxlength="120" autocomplete="name"></label>
+<label>Email for follow-up <span>(optional)</span><input name="email" id="visitorEmail" type="email" maxlength="254" autocomplete="email"></label></div>
+<div class="options"><label>Language <select id="locale" aria-label="Response language"><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option></select></label>
+<label class="consent"><input id="aiConsent" type="checkbox"> I agree to AI processing of my message if this business has enabled it.</label></div>
+<div class="compose"><label class="sr-only" for="customerMessage">Type your question</label>
+<textarea id="customerMessage" placeholder="Ask a question…" maxlength="2000" rows="2" required></textarea><button id="sendButton" type="submit">Send</button></div>
+<p class="privacy">Please do not send passwords, payment card details or sensitive personal information. Replies are not necessarily reviewed immediately by a person.</p>
+</form></main></body></html>
