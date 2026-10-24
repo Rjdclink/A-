@@ -45,7 +45,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
  if(!ledger||!tenants||!adviser)throw Error('Missing server dependencies');
  if(publicDashboard&&(!Object.hasOwn(tenants,publicWorkspace)||validateWorkspace(publicWorkspace)!==publicWorkspace))throw Error('Public workspace is not configured');
  const shop=configureShopify(shopify);
- const supportService=support||(ledger.db?createSupport(ledger.db,{responder:createSupportResponder()}):null);
+ const supportService=support||(ledger.db?createSupport(ledger.db,{responder:createSupportResponder(),onEvent:unified?.emit}):null);
  const supportFrames=supportFrameOrigins(embedOrigins);
  const supportRequests=createLimiter({max:12,windowMs:60000,maxKeys:3000});
  const requests=createLimiter({max:150,windowMs:60000,maxKeys:3000});
@@ -186,7 +186,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    if(!Object.hasOwn(tenants,w))return response(res,401,{error:'Unauthorized'});
    const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname));
    const isSupport=url.pathname.startsWith('/api/support/');
-   const publicSupport=(req.method==='GET'&&url.pathname==='/api/support/config')||(req.method==='POST'&&['/api/support/chat','/api/support/thread'].includes(url.pathname));
+   const publicSupport=(req.method==='GET'&&url.pathname==='/api/support/config')||(req.method==='POST'&&['/api/support/chat','/api/support/thread','/api/support/rating','/api/support/appointments','/api/support/handoff'].includes(url.pathname));
    const needsAdmin=isSupport?!publicSupport:(!publicDashboard||publicRouteNeedsAdmin(req.method,url.pathname));
    if(needsAdmin&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
    if(isSupport){
@@ -200,12 +200,23 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
      const created=!payload.ticketId;
      return response(res,created?201:200,await supportService.receive(w,payload));
     }
+    if(req.method==='POST'&&url.pathname==='/api/support/handoff')return response(res,200,supportService.requestHandoff(w,payload));
     if(req.method==='POST'&&url.pathname==='/api/support/thread')return response(res,200,supportService.thread(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/rating')return response(res,200,supportService.rate(w,payload));
     if(req.method==='GET'&&url.pathname==='/api/support/articles')return response(res,200,{articles:supportService.listArticles(w)});
     if(req.method==='POST'&&url.pathname==='/api/support/articles')return response(res,201,{article:supportService.addArticle(w,payload)});
     const article=url.pathname.match(/^\/api\/support\/articles\/([0-9a-f-]{36})$/i);
     if(article&&req.method==='PATCH')return response(res,200,{article:supportService.editArticle(w,article[1],payload)});
     if(article&&req.method==='DELETE')return response(res,200,{deleted:supportService.removeArticle(w,article[1])});
+    if(req.method==='GET'&&url.pathname==='/api/support/customers')return response(res,200,{customers:supportService.customers(w)});
+    if(req.method==='POST'&&url.pathname==='/api/support/customers/lookup')return response(res,200,{profile:supportService.customerLookup(w,payload?.email)});
+    if(req.method==='GET'&&url.pathname==='/api/support/leads')return response(res,200,{leads:supportService.leads(w,{status:url.searchParams.get('status')||undefined})});
+    const lead=url.pathname.match(/^\/api\/support\/leads\/([0-9a-f-]{36})$/i);
+    if(lead&&req.method==='PATCH')return response(res,200,{lead:supportService.updateLead(w,lead[1],payload)});
+    if(req.method==='GET'&&url.pathname==='/api/support/appointments')return response(res,200,{appointments:supportService.appointments(w,{status:url.searchParams.get('status')||undefined})});
+    if(req.method==='POST'&&url.pathname==='/api/support/appointments')return response(res,201,{appointment:supportService.requestAppointment(w,payload)});
+    const appt=url.pathname.match(/^\/api\/support\/appointments\/([0-9a-f-]{36})$/i);
+    if(appt&&req.method==='PATCH')return response(res,200,{appointment:supportService.updateAppointment(w,appt[1],payload)});
     if(req.method==='GET'&&url.pathname==='/api/support/metrics')return response(res,200,supportService.metrics(w));
     if(req.method==='GET'&&url.pathname==='/api/support/tickets')return response(res,200,{tickets:supportService.tickets(w,{status:url.searchParams.get('status')||undefined})});
     const reply=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})\/replies$/i);

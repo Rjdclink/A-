@@ -12,7 +12,7 @@ const tenants=loadTenants();
 const ledger=new Ledger(process.env.DB_PATH||'data/a-plus.sqlite',{pseudonymKey:process.env.PSEUDONYM_KEY,maxEvents:Number(process.env.MAX_EVENTS||500000)});
 const shops=process.env.SHOPIFY_SHOPS_JSON?JSON.parse(process.env.SHOPIFY_SHOPS_JSON):{};
 const unified=createUnified({ledger});
-const support=createSupport(ledger.db,{responder:createSupportResponder()});
+const support=createSupport(ledger.db,{responder:createSupportResponder(),onEvent:(workspace,event,data)=>unified.emit(workspace,event,data)});
 const handler=createHandler({ledger,tenants,unified,support,publicDashboard:process.env.PUBLIC_DASHBOARD==='true',publicWorkspace:process.env.PUBLIC_WORKSPACE||'default',adviser:advisory,shopify:{secret:process.env.SHOPIFY_SECRET,shops,allowOrders:process.env.SHOPIFY_ANALYTICS_BASIS_ACKNOWLEDGED==='true'}});
 const server=createServer(handler);
 const host=process.env.HOST||(process.env.PUBLIC_DASHBOARD==='true'?'0.0.0.0':'127.0.0.1');

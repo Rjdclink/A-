@@ -32,12 +32,14 @@
   busy=true;id('sendButton').disabled=true;
   try{
    const data=await api('chat',{message,name:id('visitorName').value,email:id('visitorEmail').value,
-    locale:id('locale').value,aiConsent:id('aiConsent').checked,...(ticketId?{ticketId,sessionToken}:{})});
+    locale:id('locale').value,aiConsent:id('aiConsent').checked,leadConsent:!ticketId&&id('leadConsent').checked,...(ticketId?{ticketId,sessionToken}:{})});
    ticketId=data.ticketId;if(data.sessionToken)sessionToken=data.sessionToken;
+   id('ratingPanel').classList.remove('hidden');id('appointmentPanel').classList.remove('hidden');id('leadConsentLabel').classList.add('hidden');id('humanButton').classList.remove('hidden');
    id('customerMessage').value='';
    if(seen.size===0){say('customer',message);say('assistant',data.reply);await thread({display:false});}
    else await thread();
    if(data.needsHuman)notice.textContent='Your request has been flagged for a human team member. A response is not yet guaranteed.';
+   if(data.leadCaptured)notice.textContent+=' Your request to be contacted has been recorded.';
    id('visitorName').disabled=true;id('visitorEmail').disabled=true;
   }catch(e){notice.textContent=e.message;}
   finally{busy=false;id('sendButton').disabled=false;}
@@ -53,9 +55,43 @@
    say('assistant',config.greeting);
   }catch(e){notice.textContent=e.message;id('sendButton').disabled=true;}
  }
+ id('humanButton').addEventListener('click',async()=>{
+  if(!ticketId||!sessionToken)return;
+  const button=id('humanButton');button.disabled=true;
+  try{
+   await api('handoff',{ticketId,sessionToken});
+   await thread();
+   notice.textContent='Your conversation is now flagged for a human team member. Response times depend on staffing.';
+  }catch(e){notice.textContent=e.message;}
+  finally{button.disabled=false;}
+ });
+ id('ratingForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(!ticketId||!sessionToken)return;
+  try{
+   await api('rating',{ticketId,sessionToken,rating:Number(id('ratingValue').value),feedback:id('ratingFeedback').value});
+   notice.textContent='Thank you. Your feedback has been recorded.';
+  }catch(e){notice.textContent=e.message;}
+ });
+ id('appointmentForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  if(!ticketId||!sessionToken)return;
+  const raw=id('appointmentTime').value;
+  const timestamp=new Date(raw);
+  if(!Number.isFinite(timestamp.getTime())){notice.textContent='Enter a valid preferred date and time.';return;}
+  const button=id('appointmentForm').querySelector('button');button.disabled=true;
+  try{
+   await api('appointments',{ticketId,sessionToken,service:id('appointmentService').value,
+    requestedAt:timestamp.toISOString(),timezone:Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC',notes:id('appointmentNotes').value});
+   await thread();
+   notice.textContent='Your request is in the review queue. No appointment has been booked.';
+   id('appointmentForm').reset();
+  }catch(e){notice.textContent=e.message;}
+  finally{button.disabled=false;}
+ });
  form.addEventListener('submit',send);
  id('newChat').addEventListener('click',()=>{
-  ticketId=null;sessionToken=null;seen=new Set();log.replaceChildren();notice.textContent='';
+  ticketId=null;sessionToken=null;seen=new Set();log.replaceChildren();notice.textContent='';id('humanButton').classList.add('hidden');id('ratingPanel').classList.add('hidden');id('ratingForm').reset();id('appointmentPanel').classList.add('hidden');id('appointmentForm').reset();id('leadConsentLabel').classList.remove('hidden');id('leadConsent').checked=false;
   id('visitorName').disabled=false;id('visitorEmail').disabled=false;start();
  });
  setInterval(()=>{if(ticketId&&!busy)thread();},15000);

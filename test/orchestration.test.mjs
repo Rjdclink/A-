@@ -37,3 +37,29 @@ test('external-action workflows cannot be attached to unattended growth triggers
   assert.equal(linked.status,409);
  }finally{await app.close();db.close();}
 });
+test('support handoff workflows enqueue only sanitized ticket metadata and no customer content',async()=>{
+ const {createSupport}=await import('../src/support.mjs');
+ const db=new DatabaseSync(':memory:');
+ const app=createUnified({ledger:{db},automationDbPath:':memory:',env:{SESSION_COOKIE_SECURE:'false',AUTO_BACKUP_HOURS:'0'},autoStart:false});
+ try{
+  const workflow=await app.handle('merchant','growth/workflows','POST',{
+   name:'Review customer support handoff',
+   spec:{start:'note',steps:[{id:'note',type:'template',template:'Review ticket {{input.ticket.id}}',next:'done'},{id:'done',type:'end'}]},
+   enabled:true
+  });
+  assert.equal(workflow.status,201);
+  const binding=await app.handle('merchant','orchestration/links','POST',{event:'support.handoff_required',workflow_id:workflow.data.id});
+  assert.equal(binding.status,201);
+  const support=createSupport(db,{onEvent:(...args)=>app.emit(...args)});
+  const visitor=await support.receive('merchant',{message:'I need help with a private matter',name:'Private User',email:'private.user@example.org'});
+  assert.equal(visitor.needsHuman,true);
+  const runs=await app.handle('merchant','growth/runs','GET');
+  assert.equal(runs.status,200);
+  assert.equal(runs.data.length,1);
+  assert.doesNotMatch(JSON.stringify(runs.data),/Private User|private\.user@example\.org|private matter/);
+  const others=await app.handle('other','growth/runs','GET');
+  assert.equal(others.data.length,0);
+  await app.growth.tick();
+  assert.equal((await app.handle('merchant','growth/runs','GET')).data[0].status,'completed');
+ }finally{await app.close();db.close();}
+});

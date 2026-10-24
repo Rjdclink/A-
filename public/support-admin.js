@@ -17,7 +17,7 @@
  }
  async function loadMetrics(){
   const m=await api('metrics');const host=id('metrics');host.replaceChildren();
-  for(const [label,value] of [['Total tickets',m.total],['Open',m.open],['Needs attention',m.pending],['Resolved',m.resolved],['Automated answers',m.automatedResponses]]){
+  for(const [label,value] of [['Total tickets',m.total],['Open',m.open],['Needs attention',m.pending],['Resolved',m.resolved],['Automated answers',m.automatedResponses],['Consented leads',m.contactLeads],['Appointments pending',m.appointmentPending],['Customer ratings',m.ratedTickets],['Average satisfaction',m.averageRating===null?'—':m.averageRating+'/5']]){
    const box=node('div',undefined,'kpi');box.append(node('span',label),node('strong',value));host.append(box);
   }
  }
@@ -34,7 +34,8 @@
   if(!list.tickets.length)host.append(node('p','No tickets in this view.'));
  }
  async function selectTicket(ticketId){
-  state.selected=ticketId;const {ticket,messages}=await api('tickets/'+ticketId);
+  state.selected=ticketId;const {ticket,messages,rating}=await api('tickets/'+ticketId);
+  id('ticketRating').textContent=rating?'Customer satisfaction: '+rating.rating+'/5'+(rating.feedback?' · '+rating.feedback:''):'No rating yet.';
   id('ticketTitle').textContent=ticket.subject;
   const host=id('ticketHistory');host.replaceChildren();
   for(const m of messages){const row=node('div',undefined,'message-item');row.append(node('strong',m.sender),node('div',m.body));host.append(row);}
@@ -55,6 +56,64 @@
   }
   if(!data.articles.length)host.append(node('p','No knowledge articles published yet.'));
  }
+ async function loadCustomers(){
+  const data=await api('customers'),host=id('customersList');
+  host.replaceChildren();
+  for(const customer of data.customers){
+   const button=node('button',undefined,'ticket-item');
+   button.type='button';button.append(node('strong',customer.name||customer.email),
+    node('small',customer.email),node('small',customer.ticketCount+' tickets · '+customer.unresolvedTickets+' unresolved'));
+   button.addEventListener('click',()=>showCustomer(customer.email).catch(e=>feedback(e.message)));
+   host.append(button);
+  }
+  if(!data.customers.length)host.append(node('p','No email-associated customer conversations.'));
+ }
+ async function showCustomer(email){
+  const {profile}=await api('customers/lookup',{method:'POST',body:{email}});
+  const host=id('customerHistory');host.replaceChildren();
+  host.append(node('strong',profile.displayName||profile.email),node('p','Self-reported identity, not verified. Consented leads: '+profile.consentedLeadCount));
+  for(const ticket of profile.tickets){
+   const button=node('button',undefined,'ticket-item');button.type='button';
+   button.append(node('strong',ticket.subject),node('small',ticket.status+' · '+new Date(ticket.updatedAt).toLocaleString()));
+   button.addEventListener('click',async()=>{
+    document.querySelector('[data-section="inbox"]').click();
+    await selectTicket(ticket.id);
+   });
+   host.append(button);
+  }
+ }
+ async function loadLeads(){
+  const data=await api('leads'),host=id('leadsList');host.replaceChildren();
+  for(const lead of data.leads){
+   const block=node('div',undefined,'article');
+   block.append(node('strong',lead.name+' · '+lead.email),node('p',lead.inquiry),node('small','Support ticket: '+lead.ticketId));
+   const label=node('label','Lead status');
+   const select=node('select');
+   for(const status of ['new','contacted','qualified','closed']){const option=node('option',status);option.value=status;select.append(option);}
+   select.value=lead.status;
+   select.addEventListener('change',async()=>{
+    try{await api('leads/'+lead.ticketId,{method:'PATCH',body:{status:select.value}});feedback('Lead updated.');}catch(e){feedback(e.message);}
+   });
+   label.append(select);block.append(label);host.append(block);
+  }
+  if(!data.leads.length)host.append(node('p','No visitors have requested follow-up contact.'));
+ }
+ async function loadAppointments(){
+  const data=await api('appointments'),host=id('appointmentsList');host.replaceChildren();
+  for(const appt of data.appointments){
+   const block=node('div',undefined,'article');
+   block.append(node('strong',appt.service),node('p','Requested: '+new Date(appt.requestedAt).toLocaleString()+' · '+appt.timezone),
+    node('p',appt.notes||'No additional notes'),node('small','Ticket: '+appt.ticketId+' · NOT BOOKED'));
+   const label=node('label','Internal review status');const select=node('select');
+   for(const status of ['requested','reviewing','handled','declined']){const option=node('option',status);option.value=status;select.append(option);}
+   select.value=appt.status;
+   select.addEventListener('change',async()=>{
+    try{await api('appointments/'+appt.id,{method:'PATCH',body:{status:select.value}});feedback('Appointment request updated, without creating a booking.');await loadMetrics();}catch(e){feedback(e.message);}
+   });
+   label.append(select);block.append(label);host.append(block);
+  }
+  if(!data.appointments.length)host.append(node('p','No appointment requests yet.'));
+ }
  async function loadSettings(){
   const c=await api('settings');
   id('businessNameInput').value=c.businessName;id('greetingInput').value=c.greeting;
@@ -62,7 +121,7 @@
   id('brandColorInput').value=c.brandColor;
  }
  async function refresh(){
-  await Promise.all([loadMetrics(),loadTickets(),loadArticles(),loadSettings()]);
+  await Promise.all([loadMetrics(),loadTickets(),loadArticles(),loadCustomers(),loadLeads(),loadAppointments(),loadSettings()]);
  }
  id('connectForm').addEventListener('submit',async event=>{
   event.preventDefault();state.workspace=id('workspace').value.trim();state.token=id('adminToken').value.trim();

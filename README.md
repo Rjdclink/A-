@@ -16,14 +16,14 @@ A minimal, privacy-conscious foundation for e-commerce conversion measurement, r
 
 ## Customer Service Hub (new experimental module)
 
-A+ now includes a hosted customer chat page, **approved-knowledge responses**, workspace-isolated conversations, service tickets, staff replies, a support console, basic service analytics, customer-facing settings and support data export/erasure. These are additions to the commerce intelligence and automation products, not replacements.
+A+ now includes a hosted customer chat page, **approved-knowledge responses**, workspace-isolated conversations, service tickets, staff replies, human handoffs, opt-in lead capture, appointment-request intake (not booking), customer satisfaction ratings, staff-only customer histories, privacy-minimized automation triggers, a support console, basic service analytics, customer-facing settings and support data export/erasure. These are additions to the commerce intelligence and automation products, not replacements.
 
 - **Staff console:** \`/support-admin\` (workspace + administrator token; never put tokens in merchant sites).
 - **Customer page:** \`/support?workspace=default\` (workspace selector is publicly visible by design).
 - **AI:** off by default; an existing Vireonix-compatible model can optionally paraphrase matched approved articles after merchant configuration and per-message visitor opt-in. Without a knowledge match, customer requests are queued for human review. The platform does not manufacture order-status information.
 - **Embedding:** frame embedding is disabled by default, enabled only for workspace-scoped HTTPS origins.
 - **Availability:** 24/7 capability depends on actual hosting and monitoring; in-app agent replies do not deliver email or SMS notifications.
-- **Not yet integrated:** voice, social inbox, external email/SMS, account-authenticated Shopify order actions, CRM sync, appointment booking, support-specific subscriptions or verified regulatory compliance.
+- **Not yet integrated:** voice, social inbox, external email/SMS, account-authenticated Shopify order actions, external CRM synchronization, confirmed calendar booking, support-specific subscriptions or verified regulatory compliance. The staff-only lead queue is independent from the existing Recovery pipeline.
 
 Full configuration, API contracts, privacy limitations, and capability gap matrix are in [Customer Service Hub documentation](docs/CUSTOMER_SUPPORT.md).
 
