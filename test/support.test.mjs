@@ -33,9 +33,21 @@ test('support knowledge is tenant-scoped and never publicly administrable, even 
   const created=await request(h.base,path,{token:tenants.alpha.adminToken,method:'POST',body:{question:'How long does shipping take?',answer:'Shipping usually takes two days.',locale:'en'}});
   assert.equal(created.status,201);assert.ok(created.data.article.id);
   assert.equal((await request(h.base,path,{token:tenants.beta.adminToken})).status,401);
-  assert.equal((await request(h.base,'/api/support/articles?workspace=beta',{token:tenants.beta.adminToken})).data.articles.length,0);
+  assert.equal((await request(h.base,'/api/support/articles?workspace=beta',{token:tenants.beta.adminToken})).status,403);
   assert.equal((await request(h.base,path)).status,401);
   assert.equal((await request(h.base,'/api/support/config?workspace=alpha')).status,200);
+ }finally{await h.stop();}
+});
+
+test('workspace separation applies to support tickets and knowledge',async()=>{
+ const h=await harness();
+ try{
+  await request(h.base,'/api/support/articles?workspace=alpha',{token:tenants.alpha.adminToken,method:'POST',body:{question:'Which products are available?',answer:'Only our published catalog.'}});
+  const other=await request(h.base,'/api/support/articles?workspace=beta',{token:tenants.beta.adminToken});
+  assert.equal(other.status,200);assert.equal(other.data.articles.length,0);
+  const chat=await request(h.base,'/api/support/chat?workspace=beta',{method:'POST',body:{message:'Which products are available?'}});
+  assert.equal(chat.status,201);assert.equal(chat.data.needsHuman,true);
+  assert.equal((await request(h.base,'/api/support/tickets?workspace=alpha',{token:tenants.alpha.adminToken})).data.tickets.length,0);
  }finally{await h.stop();}
 });
 
