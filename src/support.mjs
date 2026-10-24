@@ -142,6 +142,7 @@ export function createSupport(db,{responder=null,clock=()=>Date.now()}={}){
  }
  async function receive(workspace,payload={}){
   validateWorkspace(workspace);
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))fault(400,'Invalid chat payload');
   const message=requiredText(payload.message,2000,'message');
   const hasTicket=payload.ticketId!==undefined||payload.sessionToken!==undefined;
   if(hasTicket&&(!payload.ticketId||!payload.sessionToken))fault(400,'Ticket and session token required');
@@ -162,7 +163,7 @@ export function createSupport(db,{responder=null,clock=()=>Date.now()}={}){
     if(typeof generated==='string'&&generated.trim()&&generated.length<=2000){reply=generated.trim();source='ai';}
    }catch{ /* Remain on the business-approved knowledge answer if the provider is unavailable. */ }
   }
-  const time=clock(),id=existing?.id||randomUUID(),sessionToken=existing?null:randomBytes(32).toString('base64url');
+  const time=Math.max(clock(),(existing?.updated_at??0)+1),id=existing?.id||randomUUID(),sessionToken=existing?null:randomBytes(32).toString('base64url');
   const needsHuman=!matched;
   db.exec('BEGIN IMMEDIATE');
   try{
@@ -180,6 +181,7 @@ export function createSupport(db,{responder=null,clock=()=>Date.now()}={}){
  }
  function thread(workspace,payload={}){
   validateWorkspace(workspace);
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))fault(400,'Invalid session request');
   const t=verifySession(workspace,payload.ticketId,payload.sessionToken);
   return {ticketId:t.id,status:t.status,messages:messages(workspace,t.id)};
  }
@@ -193,6 +195,7 @@ export function createSupport(db,{responder=null,clock=()=>Date.now()}={}){
  function ticketDetail(workspace,id){const t=ticket(workspace,id);return {ticket:ticketView(t),messages:messages(workspace,id)};}
  function updateTicket(workspace,id,payload={}){
   const t=ticket(workspace,id);
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))fault(400,'Invalid ticket update');
   const status=payload.status===undefined?t.status:payload.status;
   const priority=payload.priority===undefined?t.priority:payload.priority;
   const assignedTo=payload.assignedTo===undefined?t.assigned_to:optionalText(payload.assignedTo,120,'assignee');
@@ -201,9 +204,9 @@ export function createSupport(db,{responder=null,clock=()=>Date.now()}={}){
   return ticketView(ticket(workspace,id));
  }
  function staffReply(workspace,id,payload={}){
-  ticket(workspace,id);
-  const message=requiredText(payload.message,4000,'reply');
-  const time=clock();
+  const previous=ticket(workspace,id);
+  const message=requiredText(payload?.message,4000,'reply');
+  const time=Math.max(clock(),previous.updated_at+1);
   db.exec('BEGIN IMMEDIATE');
   try{
    run('INSERT INTO support_messages(workspace,id,ticket_id,sender,body,created_at) VALUES(?,?,?,?,?,?)',workspace,randomUUID(),id,'agent',message,time);
@@ -246,8 +249,9 @@ export function createSupport(db,{responder=null,clock=()=>Date.now()}={}){
 }
 
 /**
- * Opt-in provider for knowledge-grounded paraphrases. Contact details never go
- * to the provider through this adapter. Customer consent is required per request.
+ * Opt-in provider for knowledge-grounded paraphrases. Structured name/email
+ * fields are excluded; free-form text may contain personal information, so
+ * explicit customer consent is required per request.
  */
 export function createSupportResponder(env=process.env,{fetcher=fetch}={}){
  if(env.SUPPORT_AI_ENABLED!=='true'||env.SUPPORT_AI_DATA_PROCESSING_ACKNOWLEDGED!=='true'||!env.AI_API_KEY)return null;
