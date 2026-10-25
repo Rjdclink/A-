@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {first,all,run,enqueue,now} from '../integrations/automation/src/core.mjs';
-const EVENTS=new Set(['recovery.analysis','commerce.visit','commerce.cart','commerce.checkout','commerce.purchase','commerce.lead','support.ticket_created','support.handoff_required','support.ticket_updated','support.agent_replied','support.lead_captured','support.appointment_requested']);
+const EVENTS=new Set(['recovery.analysis','commerce.visit','commerce.cart','commerce.checkout','commerce.purchase','commerce.lead','support.ticket_created','support.handoff_required','support.ticket_updated','support.agent_replied','support.lead_captured','support.appointment_requested','support.customer_replied','support.booking_confirmed','support.booking_cancelled']);
 function fault(message,status=400){const e=Error(message);e.status=status;throw e;}
 export function createOrchestration(ledgerDb,growthDb){
  ledgerDb.exec("CREATE TABLE IF NOT EXISTS growth_workflow_links(workspace TEXT NOT NULL,id TEXT NOT NULL,event TEXT NOT NULL,workflow_id TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,PRIMARY KEY(workspace,id),UNIQUE(workspace,event,workflow_id));");

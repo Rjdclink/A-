@@ -12,20 +12,21 @@ A minimal, privacy-conscious foundation for e-commerce conversion measurement, r
 - **Privacy:** HMAC pseudonymous subject keys, deletion/export APIs, customer-redaction tombstones that prevent re-imports, workspace removal, and a queue for merchant data-access requests.
 - **Shopify webhook receiver:** signed raw-body HMAC checks, shop allowlists, paid-order idempotency, mandatory-topic handlers, persistent uninstall tombstones. **No Shopify OAuth, customer privacy approval, installed app subscriptions, or completed merchant export delivery workflow yet.**
 - **Same AI as GrowthVeyra:** Vireonix \`auto\` chat-completions endpoint, only aggregate commerce metrics passed to the model; AI proposals are advisory and never send marketing or purchase ads autonomously.
-- **Testing:** dependency-free Node test suite, HTTP integration tests, migration tests and GitHub Actions workflow configuration. Github Actions may show startup failures due to account configuration; verify locally.
+- **Testing:** direct Node test suite, HTTP integration tests and migration tests. Run npm run verify locally; GitHub Actions is not configured or required.
 
-## Customer Service Hub (new experimental module)
+## Customer Service Hub (integrated, self-hosted capabilities)
 
-A+ now includes a hosted customer chat page, **approved-knowledge responses**, workspace-isolated conversations, service tickets, staff replies, human handoffs, opt-in lead capture, appointment-request intake (not booking), customer satisfaction ratings, staff-only customer histories, privacy-minimized automation triggers, a support console, basic service analytics, customer-facing settings and support data export/erasure. These are additions to the commerce intelligence and automation products, not replacements.
+A+ now contains a separate customer-service system: merchant-branded website chat, a multilingual interface with English/Spanish/French greetings, verified FAQs with atomic JSON/CSV import, individual staff accounts and access roles, a searchable ticket inbox, explicit human handoffs, internal notes, saved replies, automatic local staff routing, in-app alerts, service-level tracking, customer satisfaction trends, opt-in leads, customer and agent attachments, and ticket-level self-service export and erasure.
 
-- **Staff console:** \`/support-admin\` (workspace + administrator token; never put tokens in merchant sites).
-- **Customer page:** \`/support?workspace=default\` (workspace selector is publicly visible by design).
-- **AI:** off by default; an existing Vireonix-compatible model can optionally paraphrase matched approved articles after merchant configuration and per-message visitor opt-in. Without a knowledge match, customer requests are queued for human review. The platform does not manufacture order-status information.
-- **Embedding:** frame embedding is disabled by default, enabled only for workspace-scoped HTTPS origins.
-- **Availability:** 24/7 capability depends on actual hosting and monitoring; in-app agent replies do not deliver email or SMS notifications.
-- **Not yet integrated:** voice, social inbox, external email/SMS, account-authenticated Shopify order actions, external CRM synchronization, confirmed calendar booking, support-specific subscriptions or verified regulatory compliance. The staff-only lead queue is independent from the existing Recovery pipeline.
+The module also manages staff-reviewed appointment requests and capacity-controlled **internal A+ appointment reservations and cancellations**. These do not interact with external calendars.
 
-Full configuration, API contracts, privacy limitations, and capability gap matrix are in [Customer Service Hub documentation](docs/CUSTOMER_SUPPORT.md).
+- Merchant console: /support-admin; the owner signs in with their workspace admin token and can create individual staff accounts.
+- Visitor chat: /support?workspace=default; ticket credentials can restore a conversation within the same browser tab.
+- Default customer answers use merchant-approved knowledge only. Optional AI paraphrasing requires a configured provider and both merchant and visitor opt-in.
+- Local tests: npm run verify. GitHub Actions are not used.
+- Outside providers **not connected**: actual email/SMS/social/telephone messaging, merchant account authentication and Shopify order actions, outside CRM/calendar updates, hosted deployment and support-specific subscription collection.
+
+See [Customer Service Hub capabilities, setup and limits](docs/CUSTOMER_SUPPORT.md).
 
 ## Local setup
 

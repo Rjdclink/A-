@@ -1,5 +1,6 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {validateWorkspace} from './security.mjs';
+import {extendSupport} from './support-extensions.mjs';
 
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOCALE=/^[a-z]{2}(?:-[A-Z]{2})?$/;
@@ -88,13 +89,22 @@ function matchArticle(message,articles){
  }).filter(x=>x.hits>0&&x.score>=0.5).sort((a,b)=>b.score-a.score||b.hits-a.hits);
  return ranked[0]?.article||null;
 }
-function articleView(row){return {id:row.id,question:row.question,answer:row.answer,locale:row.locale,active:!!row.active,createdAt:row.created_at,updatedAt:row.updated_at};}
+function articleView(row){return {id:row.id,question:row.question,answer:row.answer,locale:row.locale,category:row.category||'',active:!!row.active,createdAt:row.created_at,updatedAt:row.updated_at};}
 function leadView(row){return {ticketId:row.ticket_id,name:row.name,email:row.email,inquiry:row.inquiry,status:row.status,createdAt:row.created_at,updatedAt:row.updated_at};}
 function appointmentView(row){return {id:row.id,ticketId:row.ticket_id,service:row.service,requestedAt:row.requested_at,timezone:row.timezone,notes:row.notes,status:row.status,confirmed:false,createdAt:row.created_at,updatedAt:row.updated_at};}
 function ticketView(row){return {id:row.id,name:row.name,email:row.email,subject:row.subject,status:row.status,priority:row.priority,assignedTo:row.assigned_to,channel:row.channel,automatedResponses:row.automated_responses,createdAt:row.created_at,updatedAt:row.updated_at,firstAgentAt:row.first_agent_at,lastMessage:row.last_message??undefined};}
 
 export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now()}={}){
  db.exec(sql);
+ const settingsColumns=new Set(db.prepare('PRAGMA table_info(support_settings)').all().map(row=>row.name));
+ for(const [column,definition] of [
+  ['logo_text',"TEXT NOT NULL DEFAULT 'A+'"],
+  ['greeting_es',"TEXT NOT NULL DEFAULT '¡Hola! ¿En qué podemos ayudarte hoy?'"],
+  ['greeting_fr',"TEXT NOT NULL DEFAULT 'Bonjour ! Comment pouvons-nous vous aider ?'"]
+ ]){
+  if(!settingsColumns.has(column))db.exec('ALTER TABLE support_settings ADD COLUMN '+column+' '+definition);
+ }
+ let enhanced=null;
  const one=(query,...args)=>db.prepare(query).get(...args);
  const all=(query,...args)=>db.prepare(query).all(...args);
  const run=(query,...args)=>db.prepare(query).run(...args);
@@ -105,6 +115,7 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
   return found;
  }
  function notify(workspace,event,id){
+  enhanced?.onSupportEvent(workspace,event,id);
   if(typeof onEvent!=='function')return;
   const t=ticket(workspace,id);
   const data={ticket:{id:t.id,status:t.status,priority:t.priority,channel:t.channel}};
@@ -117,8 +128,8 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
  function settings(workspace){
   validateWorkspace(workspace);
   const row=one('SELECT * FROM support_settings WHERE workspace=?',workspace);
-  return row?{businessName:row.business_name,greeting:row.greeting,businessHours:row.business_hours,defaultLocale:row.default_locale,brandColor:row.brand_color}:
-   {businessName:'Customer support',greeting:'Hello! How may we help you today?',businessHours:'',defaultLocale:'en',brandColor:'#5264d8'};
+  return row?{businessName:row.business_name,greeting:row.greeting,greetingEs:row.greeting_es,greetingFr:row.greeting_fr,logoText:row.logo_text,businessHours:row.business_hours,defaultLocale:row.default_locale,brandColor:row.brand_color}:
+   {businessName:'Customer support',greeting:'Hello! How may we help you today?',greetingEs:'¡Hola! ¿En qué podemos ayudarte hoy?',greetingFr:'Bonjour ! Comment pouvons-nous vous aider ?',logoText:'A+',businessHours:'',defaultLocale:'en',brandColor:'#5264d8'};
  }
  function updateSettings(workspace,payload){
   validateWorkspace(workspace);
@@ -127,13 +138,16 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
   const current={
    businessName:payload.businessName===undefined?previous.businessName:requiredText(payload.businessName,100,'business name'),
    greeting:payload.greeting===undefined?previous.greeting:requiredText(payload.greeting,500,'greeting'),
+   greetingEs:payload.greetingEs===undefined?previous.greetingEs:requiredText(payload.greetingEs,500,'Spanish greeting'),
+   greetingFr:payload.greetingFr===undefined?previous.greetingFr:requiredText(payload.greetingFr,500,'French greeting'),
+   logoText:payload.logoText===undefined?previous.logoText:requiredText(payload.logoText,20,'logo text'),
    businessHours:payload.businessHours===undefined?previous.businessHours:optionalText(payload.businessHours,500,'business hours'),
    defaultLocale:payload.defaultLocale===undefined?previous.defaultLocale:validLocale(payload.defaultLocale),
    brandColor:payload.brandColor===undefined?previous.brandColor:payload.brandColor
   };
   if(typeof current.brandColor!=='string'||!/^#[0-9a-f]{6}$/i.test(current.brandColor))fault(400,'Invalid brand color');
-  run('INSERT INTO support_settings(workspace,business_name,greeting,business_hours,default_locale,brand_color) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace) DO UPDATE SET business_name=excluded.business_name,greeting=excluded.greeting,business_hours=excluded.business_hours,default_locale=excluded.default_locale,brand_color=excluded.brand_color',
-   workspace,current.businessName,current.greeting,current.businessHours,current.defaultLocale,current.brandColor);
+  run('INSERT INTO support_settings(workspace,business_name,greeting,greeting_es,greeting_fr,logo_text,business_hours,default_locale,brand_color) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace) DO UPDATE SET business_name=excluded.business_name,greeting=excluded.greeting,greeting_es=excluded.greeting_es,greeting_fr=excluded.greeting_fr,logo_text=excluded.logo_text,business_hours=excluded.business_hours,default_locale=excluded.default_locale,brand_color=excluded.brand_color',
+   workspace,current.businessName,current.greeting,current.greetingEs,current.greetingFr,current.logoText,current.businessHours,current.defaultLocale,current.brandColor);
   return current;
  }
  function listArticles(workspace){
@@ -145,9 +159,10 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
   const question=requiredText(payload?.question,500,'question');
   const answer=requiredText(payload?.answer,4000,'answer');
   const locale=validLocale(payload.locale??'en');
+  const category=optionalText(payload.category,80,'category');
   if(payload.active!==undefined&&typeof payload.active!=='boolean')fault(400,'Invalid active flag');
   const id=randomUUID(),time=clock();
-  run('INSERT INTO support_articles(workspace,id,question,answer,locale,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',workspace,id,question,answer,locale,payload.active===false?0:1,time,time);
+  run('INSERT INTO support_articles(workspace,id,question,answer,locale,category,active,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',workspace,id,question,answer,locale,category,payload.active===false?0:1,time,time);
   return articleView(one('SELECT * FROM support_articles WHERE workspace=? AND id=?',workspace,id));
  }
  function editArticle(workspace,id,payload){
@@ -157,8 +172,9 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
   const question=payload?.question===undefined?existing.question:requiredText(payload.question,500,'question');
   const answer=payload?.answer===undefined?existing.answer:requiredText(payload.answer,4000,'answer');
   const locale=payload?.locale===undefined?existing.locale:validLocale(payload.locale);
+  const category=payload?.category===undefined?existing.category:optionalText(payload.category,80,'category');
   const active=payload?.active===undefined?existing.active:(typeof payload.active==='boolean'?Number(payload.active):fault(400,'Invalid active flag'));
-  run('UPDATE support_articles SET question=?,answer=?,locale=?,active=?,updated_at=? WHERE workspace=? AND id=?',question,answer,locale,active,clock(),workspace,id);
+  run('UPDATE support_articles SET question=?,answer=?,locale=?,category=?,active=?,updated_at=? WHERE workspace=? AND id=?',question,answer,locale,category,active,clock(),workspace,id);
   return articleView(one('SELECT * FROM support_articles WHERE workspace=? AND id=?',workspace,id));
  }
  function removeArticle(workspace,id){
@@ -189,7 +205,12 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
   const leadCaptured=payload.leadConsent===true&&!existing;
   const articles=all('SELECT question,answer FROM support_articles WHERE workspace=? AND locale=? AND active=1',workspace,locale);
   const matched=matchArticle(message,articles);
-  let reply=matched?.answer||'I cannot verify that from the business information available. I have flagged your request for a team member to review.';
+  const fallback={
+   en:'I cannot verify that from the business information available. I have flagged your request for a team member to review.',
+   es:'No puedo verificar esa información con los datos aprobados de la empresa. He señalado tu solicitud para que la revise una persona del equipo.',
+   fr:'Je ne peux pas vérifier cette information avec les renseignements approuvés de l’entreprise. Votre demande a été transmise à un membre de l’équipe.'
+  };
+  let reply=matched?.answer||(fallback[locale.slice(0,2)]||fallback.en);
   let source=matched?'knowledge':'handoff';
   if(matched&&payload.aiConsent===true&&typeof responder==='function'){
    try{
@@ -214,6 +235,7 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
    db.exec('COMMIT');
   }catch(e){db.exec('ROLLBACK');throw e;}
   if(!existing)notify(workspace,'support.ticket_created',id);
+  else notify(workspace,'support.customer_replied',id);
   if(needsHuman)notify(workspace,'support.handoff_required',id);
   if(leadCaptured)notify(workspace,'support.lead_captured',id);
   return {ticketId:id,...(sessionToken?{sessionToken}:{}),reply,source,needsHuman,leadCaptured,status:ticket(workspace,id).status};
@@ -384,7 +406,8 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
   if(!Number.isSafeInteger(days)||days<30||days>730)fault(400,'Invalid support retention');
   return run('DELETE FROM support_tickets WHERE updated_at<?',clock()-days*DAY).changes;
  }
- return {settings,updateSettings,listArticles,addArticle,editArticle,removeArticle,receive,requestHandoff,thread,tickets,ticketDetail,updateTicket,staffReply,rate,customers,customerLookup,leads,updateLead,appointments,requestAppointment,updateAppointment,metrics,exportEmail,eraseEmail,eraseWorkspace,expire};
+ enhanced=extendSupport({settings,updateSettings,listArticles,addArticle,editArticle,removeArticle,receive,requestHandoff,thread,tickets,ticketDetail,updateTicket,staffReply,rate,customers,customerLookup,leads,updateLead,appointments,requestAppointment,updateAppointment,metrics,exportEmail,eraseEmail,eraseWorkspace,expire,emitSupportEvent:notify},db,{clock});
+ return enhanced;
 }
 
 /**

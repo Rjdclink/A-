@@ -1,127 +1,76 @@
-# A+ Customer Service Hub — implementation status
+# A+ Customer Service Hub
 
-The A+ support hub is a **prototype feature** added to the existing commerce-intelligence application. It does not turn A+ into a certified helpdesk, deploy integrations, or imply regulatory approval.
+## Scope and current status
 
-## Capability comparison
+This is a working, self-hostable customer-service module integrated with A+'s existing commerce analytics, revenue recovery, and automation. Its database and APIs run locally without a third-party customer-service provider. **It is still a prototype requiring production security, compliance and operations review.** No GitHub Actions are configured or required.
 
-| Capability | State | Implementation |
-| --- | --- | --- |
-| Website support chat | Implemented (same-origin hosted page) | \`GET /support?workspace=default\`, customer UI |
-| Persistent customer conversations | Implemented | Workspace-isolated SQLite tickets and messages |
-| Business-approved knowledge | Implemented | Create, edit, deactivate or delete articles; locale-specific lookup |
-| Instant automated answers | Implemented for matching approved FAQ questions | Deterministic retrieval by default; never invent order details |
-| AI-generated phrasing | Optional opt-in | Existing Vireonix-compatible endpoint, approved FAQ context only; merchant + customer consent gates |
-| Human handoff | Implemented as ticket queue and explicit request | Unmatched inquiries or the visitor's Speak with a human action mark tickets as pending; no guaranteed notification |
-| Agent inbox and replies | Implemented (in-app only) | \`GET /support-admin\`, scoped tickets/replies |
-| Ticket status/priority/assignment | Implemented | Admin API & console |
-| Tenant workspace boundaries | Implemented for these routes | Admin bearer authorization, hashed customer session secrets |
-| Customer histories and staff profiles | Implemented per ticket and staff-only email grouping | Customers use a random session token; staff sees histories grouped by **self-declared, unverified** email |
-| Service analytics and satisfaction | Basic implementation | Status counts, automated answers, human-response time, ratings and average satisfaction; opt-in leads and appointment queues |
-| Business branding & hours | Basic implementation | Admin settings + hosted customer page |
-| Multilingual content | Basic locale selection | Merchant must supply knowledge in that locale; translation is **not** automatic |
-| Data export, erasure & retention | Implemented for support records | Admin email-based tools, scoped workspace erasure, 30–730-day retention configuration |
-| Contact lead capture | Implemented in Support Hub | An explicit checkbox on a new chat collects name, email and inquiry for staff-only follow-up; distinct from the existing Recovery lead pipeline |
-| Commerce analytics & Shopify webhooks | Existing A+ platform | Support bot cannot independently verify customer orders or issue returns |
-| Workflow automation | Implemented with safety limits | Six support event types link to existing non-external-action workflows and pass ticket ID/status/priority/channel only, without customer details |
-| Email/SMS/social unified inbox | Not implemented | Requires provider APIs, inbound signature verification and consent/opt-out support |
-| AI voice receptionist | Not implemented | Requires telephony infrastructure, disclosure, testing, compliance and operational monitoring |
-| Appointment requests | Implemented as staff review requests only | Customers submit their preferred time, timezone, service and notes; **no calendar booking or appointment confirmation** occurs |
-| CRM synchronization | Not implemented | Requires OAuth/integration, field mapping, reconciliation and access controls |
-| Refunds, inventory changes, payments | Not implemented | Requires verified customer authentication, platform-specific authorizations and idempotent actions |
-| SaaS signup, subscriptions, white-label billing | Partial via existing automation engine | Not wired to a purchasable support product or support-specific entitlements |
-| Security/compliance certification | Not claimed | Independent review, threat modeling and live operational testing still required |
+## Locally implemented features
 
-## Running locally
+| Category | What works |
+|---|---|
+| Customer website chat | Ticket-specific conversation, verified-knowledge replies, visitor handoff to staff and 15-second chat polling |
+| Business knowledge | Manual article editor, activation/unpublishing, categories, search and atomic JSON or CSV imports (up to 100 per batch) |
+| Optional AI | Existing model API can paraphrase an approved answer only when merchant enables it and visitor expressly consents. Default works without an AI key |
+| Staff inbox | Search and filter tickets, update priority/status/assignment, save human replies and staff-only notes, insert reusable response macros |
+| Workforce | Owner, manager and agent access levels; individual staff login, scrypt password hashes, revocable eight-hour support-only sessions |
+| Routing | Least-busy available employee assignment for support handoffs; optional merchant-defined priority phrases |
+| Internal alerts | In-app handoff and appointment alerts, elapsed-time first-response/resolution SLA targets and dashboard reporting |
+| Customer records | Customer history grouped by self-reported email, never treated as verified identity |
+| Leads | Voluntary, separately consented intake and internal lead status management |
+| Manual appointment requests | Customer requests a preferred time; staff reviews, no actual reservation is created |
+| Internal booking | Merchant-created slots with service, start, duration and capacity; atomic booking/overlap controls and cancellation, recorded only in A+ |
+| Attachments | Private customer/staff files, validated PDF/PNG/JPG/TXT/CSV, max 1 MiB each, eight per ticket, 32 MiB per workspace, secure ticket-based access |
+| Service quality | Customer satisfaction scores and optional feedback, local trend reports and status counts |
+| Privacy controls | Ticket-specific visitor self-export/erasure; admin email-based export/erasure; workspace removal and configured retention |
+| Branding | Merchant display name, logo letters, accent color, hours and English/Spanish/French greeting text |
+| Multilingual interface | Local English/Spanish/French labels and fallback handoff messages; merchants provide approved FAQs separately in each language |
+| Workflow events | Privacy-minimized internal automation triggers, with customer text, email and attachments excluded |
+| Source and tests | Node 22+ application, direct Node and HTTP tests, browser smoke testing, without GitHub Actions |
 
-Requires Node.js >=22.16 with the built-in SQLite module.
+## Start and access
 
-1. Configure distinct admin/ingest credentials and a stable pseudonym key as described in the repository README.
-2. Run \`npm run check\`, then \`npm start\`.
-3. Navigate to \`/support-admin\` and enter the correct workspace ID and **admin** bearer token (kept in page memory only).
-4. Publish an accurate knowledge article for each verified business policy, then navigate to \`/support?workspace=default\` to test the visitor experience.
-5. Unknown questions or the visitor's explicit human-handoff button mark a ticket \`pending\`. Staff can reply inside the Support Console. The customer page polls for new messages while open.
-6. Visitors may optionally check a **separate contact-consent box** to submit a follow-up lead (name, email, first inquiry). Leads live within the Support Hub and are not automatically emailed or synchronized into Recovery CRM.
-7. Once a conversation exists, a visitor can submit a preferred date/time for an **appointment request**, leave feedback, or rate service. Staff can review requests; A+ does **not** reserve a calendar slot, make confirmation promises, or send a customer notification.
-8. Customer history groups support tickets by self-reported email. It is **not an identity-verification system**: never use this grouping alone to reveal an account's confidential commerce, financial or health information.
+Configure the normal A+ environment: distinct server-only ADMIN_TOKEN and INGEST_TOKEN values of 24+ characters, plus a stable PSEUDONYM_KEY. Node.js 22.16 or newer is required.
 
-### Embedding the customer chat on a merchant site
+From the repository root run:
 
-By default, frame embedding is disabled. Configure a strict, workspace-scoped HTTPS origin allowlist:
+    npm ci
+    npm run verify
+    npm start
 
-\`\`\`dotenv
-SUPPORT_EMBED_ORIGINS_JSON={"default":["https://merchant.example"]}
-\`\`\`
+Open the merchant console at /support-admin and the customer page at /support?workspace=default. The workspace owner signs in with the merchant administrator token and can create individual manager or agent accounts. Individual employee logins do not grant access to the commerce administrator endpoints. Staff credentials are kept in page memory and revoked on server-side logout, account disabling or password change.
 
-Then embed the hosted support page on that origin only:
+The owner can create verified knowledge articles, import JSON/CSV, manage team members and privacy requests. Managers can update business-facing knowledge, service targets, macros and internal availability. Agents can work customer tickets and reply, but cannot administer workspace credentials or export all personal data.
 
-\`\`\`html
-<iframe title="Customer support"
-  src="https://YOUR-SECURE-A-PLUS-DOMAIN/support?workspace=default"
-  width="420" height="670" loading="lazy"></iframe>
-\`\`\`
+## Customer support workflow
 
-Do not expose admin or ingestion tokens in browser scripts, URL parameters or merchant-side code. The widget operates inside an iframe on the A+ origin; the server uses Content Security Policy \`frame-ancestors\` rather than broad CORS access. Production installation also needs HTTPS, abuse monitoring and security review.
+1. A merchant provides accurate, approved information and publishes its FAQs. The default bot uses deterministic FAQ matching. It does not invent a shipping status, payment, refund, or merchant policy when no verified data exists.
+2. The customer asks a question. A missing answer marks the ticket for human attention; the customer can also explicitly request a human.
+3. A visitor may separately opt into lead follow-up with a name, email and inquiry. This is not broad marketing consent.
+4. Staff can answer inside the authenticated dashboard. Customer chats check for new messages approximately every 15 seconds while their page remains open. They do not receive push, SMS or email notifications through this module.
+5. The customer can request an appointment for staff review, or book an actual open **A+ internal** slot offered by the merchant. A confirmed_local reservation means only that A+ reserved a slot. An external calendar has not been checked or updated.
+6. A customer may rate service, upload permitted files, export customer-visible information, or erase the ticket and its dependent support data.
+7. The widget retains the random ticket credential only in same-tab sessionStorage to restore a conversation after a page reload. Starting another conversation or erasing the previous one clears that credential. It is not an email identity check.
 
-### Optional AI phrasing
+## Security and important boundaries
 
-Without special configuration, responses are restricted to approved article text. Enable provider paraphrasing **only after verifying the merchant's data-processing arrangements, privacy disclosures and lawful basis**:
+- Customer session credentials are random, hashed at rest, and required to read customer ticket content. Sharing the token gives another holder access; treat it as sensitive.
+- Tickets, team members, messages, leads, notes and documents are workspace-scoped. Staff notes never appear in the visitor thread.
+- Customer history grouped by self-reported email is **unverified**. Do not use it to authenticate a real bank, legal, health, e-commerce or payment account.
+- Attachments are stored as bytes in the local SQLite-backed support database. They are validated by size, extension, signatures or UTF-8, but are **not malware-scanned**. Do not treat uploaded files as trusted.
+- Customer self-export returns available ticket data and attachment metadata; file contents can be downloaded separately with the same ticket authorization.
+- Staff-only notes are included in authorized merchant exports, not visitor self-export.
+- Retention defaults to 180 days for old tickets and their child records, and can be configured using SUPPORT_RETENTION_DAYS (30–730). Merchant security, backups, older snapshots and audit retention require separate attention.
+- A customer whose ticket has no email may still erase it with a valid ticket/session token. Staff handling email-based erasure must independently verify identity and match the right records.
+- The internal automation engine is given only ticket IDs, status, priority and channel by support triggers. There are no raw customer messages, names, email addresses or attachments in these event payloads.
+- Embedding is denied by default. To allow a merchant HTTPS origin, configure SUPPORT_EMBED_ORIGINS_JSON to map workspace names to exact trusted origins. Never embed admin or ingestion tokens on customer websites.
+- Public access, payments, account lookups and AI require threat modeling, independent security/privacy review, hosting hardening, monitoring, real backups and penetration testing before regulated or sensitive live data.
 
-\`\`\`dotenv
-AI_API_KEY=YOUR_SERVER_SIDE_KEY
-SUPPORT_AI_ENABLED=true
-SUPPORT_AI_DATA_PROCESSING_ACKNOWLEDGED=true
-\`\`\`
+## What still requires external integrations
 
-The visitor must also check the AI-consent box. The adapter sends the message (which may contain information voluntarily typed by the visitor) and one matched approved article; it does **not** send separately collected name/email fields. The prompt limits replies to verified knowledge; **this is not a formal factual-verification guarantee**. Test the provider carefully. If the provider fails, the system falls back to the approved article. If no article matches, the request is escalated without calling AI.
+The implementation **does not** claim to provide third-party email/IMAP/SMTP delivery, SMS, WhatsApp/Messenger/social messaging, telephone AI reception, validated customer identity, authenticated Shopify order tracking/refunds, actual external calendar bookings, third-party CRM synchronization, or collected support subscriptions. Those features depend on provider keys, authorization and workflows, legal/consent conditions, validated webhook handlers and separate end-to-end testing.
 
-### Retention, customer access & privacy
+The existing commerce-intelligence, automation, Shopify webhook and recovery services were not replaced. Running the local module does not automatically deploy it to the internet or guarantee 24/7 uptime.
 
-\`SUPPORT_RETENTION_DAYS=180\` defaults to 180 days and supports 30–730 days. The existing process runs a daily cleanup and an initial startup cleanup, deleting old support tickets and associated messages. Knowledge articles/settings remain until deleted or their workspace is erased.
+## Direct verification
 
-\`POST /api/support/privacy/export\` and \`POST /api/support/privacy/erase\` with \`{"email":"customer@example.org"}\` require the tenant admin token. The operator must independently verify the data subject's identity. Tickets with no email are not discoverable by an email-based request. Shopify \`shop/redact\`/uninstall removes the mapped tenant support data, but customer-id redaction cannot reliably match independent support chat records without a verified account linkage. Commerce analytics subject erasure is a separate operation. The support dataset contains personal information in ticket text; protect backups and ensure retention policies apply to them. Support leads, appointment requests and ratings are linked to tickets and erased with the associated support record. A data subject may submit an appointment request without supplying an email; the email-only export/erasure endpoint cannot locate such records. Staff must use ticket-based investigation and independently verified requests as appropriate.
-
-## API surface
-
-All routes require \`?workspace=<configured-id>\`.
-
-| Route | Method(s) | Authorization |
-| --- | --- | --- |
-| \`/api/support/config\` | GET | Visitor/public |
-| \`/api/support/chat\` | POST | Visitor/public, rate-limited |
-| \`/api/support/thread\` | POST | Ticket ID + random session token |
-| \`/api/support/handoff\` | POST | Ticket ID + random session token |
-| \`/api/support/rating\` | POST | Ticket ID + random session token |
-| \`/api/support/appointments\` | POST | Ticket ID + random session token |
-| \`/api/support/appointments\` | GET | Admin |
-| \`/api/support/appointments/:id\` | PATCH | Admin |
-| \`/api/support/leads\` | GET | Admin |
-| \`/api/support/leads/:ticketId\` | PATCH | Admin |
-| \`/api/support/customers\` | GET | Admin |
-| \`/api/support/customers/lookup\` | POST | Admin |
-| \`/api/support/articles\` | GET, POST | Admin |
-| \`/api/support/articles/:id\` | PATCH, DELETE | Admin |
-| \`/api/support/settings\` | GET, PATCH | Admin |
-| \`/api/support/tickets\` | GET (optional \`status\` filter) | Admin |
-| \`/api/support/tickets/:id\` | GET, PATCH | Admin |
-| \`/api/support/tickets/:id/replies\` | POST | Admin |
-| \`/api/support/metrics\` | GET | Admin |
-| \`/api/support/privacy/export\` | POST | Admin |
-| \`/api/support/privacy/erase\` | POST | Admin |
-
-Sample visitor payload:
-
-\`\`\`json
-{"message":"What is your shipping policy?","name":"Optional","email":"customer@example.org","locale":"en","aiConsent":false,"leadConsent":false}
-\`\`\`
-
-Response contains \`ticketId\`, \`sessionToken\` (only for the first message), \`reply\`, \`needsHuman\`, \`status\`, and \`source\`. Send \`ticketId\` + \`sessionToken\` with later chat messages, or to \`/api/support/thread\` to retrieve messages. Only visitors who explicitly consent on the **first message** with both name and email have their information saved as a Support Hub lead; this is not permission to send promotional messages or an automatically subscribed marketing list.
-
-Visitor ratings are 1–5 with optional feedback and authenticated by the existing conversation session. Appointment requests require a valid future ISO-8601 time (within one year), an IANA timezone and a valid session; their \`confirmed\` flag is always \`false\`. Staff status \`handled\` means administrative handling only, **never a confirmed booking**.
-
-Non-PII workflow triggers currently include \`support.ticket_created\`, \`support.handoff_required\`, \`support.ticket_updated\`, \`support.agent_replied\`, \`support.lead_captured\`, and \`support.appointment_requested\`. Existing automation workflow links reject unattended workflows with external actions. Support event payloads are explicitly filtered down to \`ticket.id\`, \`status\`, \`priority\`, and \`channel\`, so sensitive conversation content does not enter the automation engine.
-
-Session tokens grant access to customer conversation content; handle them like credentials. They are not saved in localStorage. A page reload begins a new session. This prototype has no customer identity verification, account-linked ticket recovery, SSO, or real-time push.
-
-## Before claiming production readiness
-
-Perform an independent security and privacy review, run end-to-end UI tests, validate each merchant's configuration, test retention and disaster recovery, ensure public rate limiting at an edge layer, set up incident alerting, and verify all provider terms. The code is tested directly via \`npm run verify\` and targeted browser tests; **GitHub Actions is not required or relied upon**. Paid support subscriptions and voice, SMS, email, appointments and order-changing actions should be separately developed and tested.
+Run npm run verify from the repository root. This executes both the main A+ tests and the existing automation/recovery suites. Tests and browser flows are run directly; GitHub Actions is intentionally absent.
