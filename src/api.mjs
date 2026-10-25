@@ -6,7 +6,9 @@ import {createSupport,createSupportResponder} from './support.mjs';
 import {parseSupportCsv} from './support-csv.mjs';
 
 const securityHeaders={
- 'cache-control':'no-store',
+ 'cache-control':'no-store, max-age=0',
+ 'cdn-cache-control':'no-store',
+ 'x-aplus-release':'public-access-10',
  'x-content-type-options':'nosniff',
  'referrer-policy':'no-referrer',
  'x-frame-options':'DENY',

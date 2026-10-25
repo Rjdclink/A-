@@ -10,8 +10,8 @@ function money(x){return new Intl.NumberFormat('en-US',{style:'currency',currenc
 function identity(){return S.public?{workspace:S.publicWorkspace,token:''}:{workspace:$('workspace').value.trim(),token:$('token').value};}
 async function api(path,method='GET',payload){
  const {workspace,token}=identity();if(!workspace||(!S.public&&!token))throw Error('Connect your workspace first.');
- const url=path+(path.includes('?')?'&':'?')+'workspace='+encodeURIComponent(workspace);
- const response=await fetch(url,{method,headers:{...(S.public?{}:{authorization:'Bearer '+token}),...(payload!==undefined?{'content-type':'application/json'}:{})},body:payload===undefined?undefined:JSON.stringify(payload)});
+ const url=path+(path.includes('?')?'&':'?')+'workspace='+encodeURIComponent(workspace)+'&release=public-access-10';
+ const response=await fetch(url,{cache:'no-store',method,headers:{...(S.public?{}:{authorization:'Bearer '+token}),...(payload!==undefined?{'content-type':'application/json'}:{})},body:payload===undefined?undefined:JSON.stringify(payload)});
  let result;try{result=await response.json();}catch{throw Error('Invalid server response');}
  if(!response.ok)throw Error(result.error||'Request failed ('+response.status+')');return result;
 }
@@ -164,7 +164,7 @@ $('billingRefresh').addEventListener('click',()=>loadSettings().catch(notice));
 $('neonRefresh').addEventListener('click',()=>loadSettings().catch(notice));
 async function start(){
  try{
-  const res=await fetch('/api/dashboard-config',{cache:'no-store'});
+  const res=await fetch('/api/dashboard-config?release=public-access-10',{cache:'no-store'});
   if(!res.ok)throw Error('Unable to load dashboard configuration');
   const config=await res.json();
   S.public=config.public===true;

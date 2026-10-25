@@ -28,7 +28,7 @@
  }
  async function api(path,{method='GET',body}={}){
   const separator=path.includes('?')?'&':'?';
-  const res=await fetch('/api/support/'+path+separator+'workspace='+encodeURIComponent(state.workspace),{
+  const res=await fetch('/api/support/'+path+separator+'workspace='+encodeURIComponent(state.workspace)+'&release=public-access-10',{cache:'no-store',
    method,headers:{authorization:'Bearer '+state.token,...(body?{'content-type':'application/json'}:{})},
    body:body?JSON.stringify(body):undefined});
   const data=await res.json();
@@ -293,7 +293,7 @@
  id('staffLoginForm').addEventListener('submit',async event=>{
   event.preventDefault();state.workspace=id('workspace').value.trim();
   try{
-   const r=await fetch('/api/support/team/login?workspace='+encodeURIComponent(state.workspace),{
+   const r=await fetch('/api/support/team/login?workspace='+encodeURIComponent(state.workspace)+'&release=public-access-10',{cache:'no-store',
     method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({email:id('staffEmail').value,password:id('staffPassword').value})});
    const data=await r.json();if(!r.ok)throw Error(data.error||'Staff sign-in failed');
@@ -410,5 +410,5 @@
   document.querySelectorAll('[data-section]').forEach(x=>x.classList.toggle('active',x===tab));
   document.querySelectorAll('.section').forEach(x=>x.classList.toggle('hidden',x.id!=='section-'+section));
  }));
- fetch('/api/dashboard-config').then(r=>r.json()).then(async config=>{if(config.public){state.workspace=config.workspace;state.role='owner';await refresh();connectReady();id('logoutButton').classList.add('hidden');}}).catch(e=>feedback(e.message));
+ fetch('/api/dashboard-config?release=public-access-10',{cache:'no-store'}).then(r=>r.json()).then(async config=>{if(config.public){state.workspace=config.workspace;state.role='owner';await refresh();connectReady();id('logoutButton').classList.add('hidden');}}).catch(e=>feedback(e.message));
 })();
