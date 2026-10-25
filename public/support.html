@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><title>A+ · Customer support</title>
+<link rel="stylesheet" href="/support.css"><script src="/support.js" defer></script></head>
+<body class="support-customer">
+<main class="chat-shell" aria-label="Customer support">
+<header class="chat-head"><div class="brand-logo" id="brandLogo">A+</div><div><strong id="businessName">Customer support</strong><p id="businessHours">We're here to help.</p></div><button class="quiet" type="button" id="newChat">New chat</button></header>
+<div class="chat-stream" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+<div id="notice" class="notice" role="status"></div><div class="handoff-bar"><button id="humanButton" type="button" class="quiet hidden">Speak with a human</button></div>
+<form id="chatForm" class="chat-form">
+<div class="customer-fields"><label><span id="nameLabel">Your name (optional)</span><input name="name" id="visitorName" maxlength="120" autocomplete="name"></label>
+<label><span id="emailLabel">Email for follow-up (optional)</span><input name="email" id="visitorEmail" type="email" maxlength="254" autocomplete="email"></label></div>
+<div class="options"><label><span id="languageLabel">Language</span> <select id="locale" aria-label="Response language"><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option></select></label>
+<label class="consent"><input id="aiConsent" type="checkbox"><span id="aiConsentText">I agree to AI processing of my message if this business has enabled it.</span></label><label class="consent" id="leadConsentLabel"><input id="leadConsent" type="checkbox"><span id="leadConsentText">I agree to this business using my name, email and inquiry to contact me about its services.</span></label></div>
+<div class="compose"><label class="sr-only" for="customerMessage">Type your question</label>
+<textarea id="customerMessage" placeholder="Ask a question…" maxlength="2000" rows="2" required></textarea><button id="sendButton" type="submit">Send</button></div>
+<p class="privacy" id="privacyMessage">Please do not send passwords, payment card details or sensitive personal information. Replies are not necessarily reviewed immediately by a person.</p>
+</form>
+<div id="customerAttachmentPanel" class="attachments-panel hidden">
+<h3 id="attachmentHeading">Attach a document to this conversation</h3><p>PDF, PNG, JPG, TXT, or CSV; 1 MiB maximum per file. Files remain in the business's support system and are visible to its support staff.</p>
+<div class="compose"><label class="sr-only" for="customerFile">Choose an attachment</label>
+<input id="customerFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.csv" aria-label="Choose attachment">
+<button id="uploadFile" type="button">Attach</button></div><div id="customerFiles" class="article-list"></div></div>
+<div id="ratingPanel" class="rating-panel hidden"><form id="ratingForm"><label><span id="ratingPrompt">How helpful was this support?</span> <select id="ratingValue" required><option value="">Choose a rating</option><option value="1">1 · Poor</option><option value="2">2 · Fair</option><option value="3">3 · Good</option><option value="4">4 · Very good</option><option value="5">5 · Excellent</option></select></label><label>Feedback (optional) <input id="ratingFeedback" maxlength="500"></label><button type="submit">Submit rating</button></form></div>
+<details id="appointmentPanel" class="appointment-panel hidden"><summary id="appointmentSummary">Request an appointment (staff review required)</summary>
+<p>Submitting this request does not book an appointment. A team member must contact you to confirm availability.</p>
+<form id="appointmentForm" class="stack"><label>Service or reason <input id="appointmentService" maxlength="140" required></label>
+<label>Preferred date and time <input id="appointmentTime" type="datetime-local" required></label>
+<label>Notes (optional) <textarea id="appointmentNotes" maxlength="1000" rows="2"></textarea></label>
+<button type="submit">Request appointment</button></form><p class="privacy">This is not a confirmed booking.</p></details>
+<details id="bookingPanel" class="appointment-panel hidden">
+<summary id="bookingSummary">Book an available business appointment slot</summary>
+<p>Reservations are confirmed only inside this business's support system. They do not automatically appear in external calendars.</p>
+<label>Available service and time <select id="availableSlots"><option value="">Loading availability…</option></select></label>
+<button id="bookSlot" type="button">Reserve this slot</button><h3>My business reservations</h3><div id="myBookings" class="article-list"></div></details>
+<div id="selfPrivacyPanel" class="self-privacy hidden"><button id="selfExport" type="button" class="quiet">Export my conversation</button>
+<button id="selfErase" type="button" class="quiet danger">Erase this conversation</button></div>
+</main></body></html>

@@ -2,6 +2,8 @@ import {readFile} from 'node:fs/promises';
 import {validateWorkspace,authorized,createLimiter,publicRouteNeedsAdmin} from './security.mjs';
 import {scoreLead,recommend} from './analytics.mjs';
 import {verifyShopify,validateShopDomain,shopifyOrder} from './shopify.mjs';
+import {createSupport,createSupportResponder} from './support.mjs';
+import {parseSupportCsv} from './support-csv.mjs';
 
 const securityHeaders={
  'cache-control':'no-store',
@@ -18,15 +20,36 @@ function requiredWorkspace(url){const workspace=url.searchParams.get('workspace'
 function bearerFor(req,tenants,workspace,role){return Object.hasOwn(tenants,workspace)&&authorized(req.headers.authorization,tenants[workspace][role]);}
 function safeStatus(e){if(Number.isInteger(e?.status)&&e.status>=400&&e.status<600)return e.status;return /Invalid|Unsupported|consent|required|precision/i.test(e.message)?400:500;}
 function fail(status,message){const e=Error(message);e.status=status;throw e;}
+function supportFrameOrigins(value){
+ if(!value)return {};
+ const parsed=JSON.parse(value);
+ if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Invalid SUPPORT_EMBED_ORIGINS_JSON');
+ const result=Object.create(null);
+ for(const [workspace,origins] of Object.entries(parsed)){
+  validateWorkspace(workspace);
+  if(!Array.isArray(origins)||origins.length>20)throw Error('Invalid support embed origins');
+  result[workspace]=origins.map(origin=>{
+   if(typeof origin!=='string'||origin.length>250)throw Error('Invalid support embed origin');
+   const parsedOrigin=new URL(origin);
+   if(parsedOrigin.origin!==origin||(parsedOrigin.protocol!=='https:'&&!(parsedOrigin.protocol==='http:'&&['localhost','127.0.0.1'].includes(parsedOrigin.hostname))))throw Error('Support embed origins must be exact HTTPS origins');
+   return origin;
+  });
+ }
+ return result;
+}
 function configureShopify(options){
  const {secret,shops={},allowOrders=false}=options||{};
  const safe=Object.create(null),used=new Set();for(const [domain,workspace]of Object.entries(shops)){validateShopDomain(domain);validateWorkspace(workspace);if(used.has(workspace))throw Error('Each Shopify shop must have its own workspace');used.add(workspace);safe[domain]=workspace;}
  return {secret,shops:safe,allowOrders};
 }
-export function createHandler({ledger,tenants,adviser,shopify,unified,publicDashboard=false,publicWorkspace='default'}={}){
+export function createHandler({ledger,tenants,adviser,shopify,unified,support=null,embedOrigins=process.env.SUPPORT_EMBED_ORIGINS_JSON||'',publicDashboard=false,publicWorkspace='default'}={}){
  if(!ledger||!tenants||!adviser)throw Error('Missing server dependencies');
  if(publicDashboard&&(!Object.hasOwn(tenants,publicWorkspace)||validateWorkspace(publicWorkspace)!==publicWorkspace))throw Error('Public workspace is not configured');
  const shop=configureShopify(shopify);
+ const supportService=support||(ledger.db?createSupport(ledger.db,{responder:createSupportResponder(),onEvent:unified?.emit}):null);
+ const supportFrames=supportFrameOrigins(embedOrigins);
+ const supportRequests=createLimiter({max:12,windowMs:60000,maxKeys:3000});
+ const staffLogins=createLimiter({max:6,windowMs:60000,maxKeys:3000});
  const requests=createLimiter({max:150,windowMs:60000,maxKeys:3000});
  const aiRequests=createLimiter({max:8,windowMs:60000,maxKeys:3000});
  return async(req,res)=>{
@@ -38,6 +61,26 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
     ledger.db.prepare('SELECT 1').get();return response(res,200,{status:'ok'});
    }
    if(req.method==='GET'&&url.pathname==='/api/dashboard-config')return response(res,200,{public:Boolean(publicDashboard),workspace:publicDashboard?publicWorkspace:null});
+   if(req.method==='GET'&&['/support','/support-admin','/support.js','/support-admin.js','/support.css'].includes(url.pathname)){
+    if(url.pathname==='/support'){
+     const workspace=requiredWorkspace(url);
+     if(!Object.hasOwn(tenants,workspace)||(publicDashboard&&workspace!==publicWorkspace))return response(res,404,{error:'Not found'});
+    }
+    const filenames={'/support':'support.html','/support-admin':'support-admin.html','/support.js':'support.js','/support-admin.js':'support-admin.js','/support.css':'support.css'};
+    const path=filenames[url.pathname];
+    const asset=await readFile(new URL('../public/'+path,import.meta.url));
+    const isHtml=path.endsWith('.html');
+    const headers={...securityHeaders,'content-type':isHtml?'text/html; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/javascript; charset=utf-8'};
+    if(isHtml){
+     let frames="'none'";
+     if(url.pathname==='/support'){
+      const origins=supportFrames[requiredWorkspace(url)]||[];
+      if(origins.length){frames="'self' "+origins.join(' ');delete headers['x-frame-options'];}
+     }
+     headers['content-security-policy']="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors "+frames+"; form-action 'self'; object-src 'none'";
+    }
+    res.writeHead(200,headers);res.end(asset);return;
+   }
    if(req.method==='GET'&&(url.pathname==='/'||url.pathname==='/app.js')){
     const isScript=url.pathname==='/app.js';const file=isScript?'../public/app.js':'../public/index.html';
     let output=await readFile(new URL(file,import.meta.url));
@@ -112,7 +155,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
     if(topic==='customers/redact'&&!Array.isArray(data.orders_to_redact))fail(400,'Invalid customer redaction payload');
     if(topic==='customers/data_request'&&(data.customer?.id==null||data.data_request?.id==null))fail(400,'Invalid customer data request');
     if(topic==='shop/redact'||topic==='app/uninstalled'){
-     ledger.eraseWorkspace(workspace,{shopDomain:domain});unified?.recovery.eraseWorkspace(workspace);unified?.erase(workspace);return response(res,200,{received:true});
+     ledger.eraseWorkspace(workspace,{shopDomain:domain});supportService?.eraseWorkspace(workspace);unified?.recovery.eraseWorkspace(workspace);unified?.erase(workspace);return response(res,200,{received:true});
     }
     if(topic==='customers/redact'){
      if(data.customer?.id!=null)ledger.eraseCustomer(workspace,String(data.customer.id));
@@ -144,7 +187,125 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,publicDash
    if(publicDashboard&&w!==publicWorkspace)return response(res,403,{error:'Workspace unavailable'});
    if(!Object.hasOwn(tenants,w))return response(res,401,{error:'Unauthorized'});
    const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname));
-   if((!publicDashboard||publicRouteNeedsAdmin(req.method,url.pathname))&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
+   const isSupport=url.pathname.startsWith('/api/support/');
+   const supportPublicGet=new Set(['/api/support/config','/api/support/calendar/slots']);
+   const supportPublicPost=new Set(['/api/support/chat','/api/support/thread','/api/support/rating','/api/support/appointments','/api/support/handoff','/api/support/team/login','/api/support/calendar/book','/api/support/calendar/cancel','/api/support/calendar/my','/api/support/files','/api/support/files/read','/api/support/files/list','/api/support/privacy/self/export','/api/support/privacy/self/erase']);
+   const publicSupport=isSupport&&((req.method==='GET'&&supportPublicGet.has(url.pathname))||(req.method==='POST'&&supportPublicPost.has(url.pathname)));
+   const owner=bearerFor(req,tenants,w,'adminToken');
+   if(isSupport){
+    if(!supportService)return response(res,503,{error:'Support unavailable'});
+    if(!publicSupport&&!owner){
+     const principal=supportService.roleOf(w,req.headers.authorization);
+     if(!principal)return response(res,401,{error:'Unauthorized'});
+     const ownerOnly=(url.pathname==='/api/support/team'||url.pathname.startsWith('/api/support/team/')&&!['/api/support/team/logout','/api/support/team/me'].includes(url.pathname))||url.pathname.startsWith('/api/support/privacy/')||url.pathname==='/api/support/audit';
+     const managerOnly=ownerOnly||(
+      req.method!=='GET'&&(
+       url.pathname==='/api/support/settings'||url.pathname==='/api/support/articles'||url.pathname.startsWith('/api/support/articles/')||
+       url.pathname==='/api/support/sla'||url.pathname==='/api/support/routing/rules'||url.pathname.startsWith('/api/support/routing/rules/')||url.pathname==='/api/support/macros'||url.pathname.startsWith('/api/support/macros/')||
+       url.pathname==='/api/support/calendar/slots'||url.pathname.startsWith('/api/support/calendar/slots/')
+      )
+     );
+     if(ownerOnly||managerOnly&&principal.role!=='manager')return response(res,403,{error:'Insufficient support permissions'});
+    }
+   }else if((!publicDashboard||publicRouteNeedsAdmin(req.method,url.pathname))&&!bearerFor(req,tenants,w,isIngest?'ingestToken':'adminToken'))return response(res,401,{error:'Unauthorized'});
+   if(isSupport){
+    if(publicSupport&&req.method==='POST'&&!supportRequests(peer+':'+w))return response(res,429,{error:'Support request limit reached'});
+    if(url.pathname==='/api/support/team/login'&&req.method==='POST'&&!staffLogins(peer+':'+w))return response(res,429,{error:'Too many staff sign-in attempts'});
+    const isFileWrite=req.method==='POST'&&(url.pathname==='/api/support/files'||/^\/api\/support\/tickets\/[0-9a-f-]{36}\/files$/i.test(url.pathname));
+    const payload=['POST','PATCH','PUT'].includes(req.method)?await parseJSON(req,['/api/support/articles/import','/api/support/articles/import-csv'].includes(url.pathname)?530000:isFileWrite?1500000:10000):null;
+    if(req.method==='POST'&&url.pathname==='/api/support/team/login')return response(res,200,supportService.login(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/team/logout')return response(res,200,supportService.logout(w,req.headers.authorization));
+    if(req.method==='GET'&&url.pathname==='/api/support/team/me'){
+     if(owner)return response(res,200,{role:'owner',name:'Workspace owner'});
+     const principal=supportService.roleOf(w,req.headers.authorization);
+     return response(res,200,{role:principal.role,name:principal.name});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/support/team')return response(res,200,{members:supportService.team(w)});
+    if(req.method==='POST'&&url.pathname==='/api/support/team')return response(res,201,{member:supportService.createStaff(w,payload)});
+    const member=url.pathname.match(/^\/api\/support\/team\/([0-9a-f-]{36})$/i);
+    if(member&&req.method==='PATCH')return response(res,200,{member:supportService.editStaff(w,member[1],payload)});
+    if(req.method==='GET'&&url.pathname==='/api/support/calendar/slots')return response(res,200,{slots:supportService.slots(w,{includeDisabled:owner||!!supportService.roleOf(w,req.headers.authorization)})});
+    if(req.method==='POST'&&url.pathname==='/api/support/calendar/slots')return response(res,201,{slot:supportService.createSlot(w,payload)});
+    const slot=url.pathname.match(/^\/api\/support\/calendar\/slots\/([0-9a-f-]{36})$/i);
+    if(slot&&req.method==='PATCH')return response(res,200,{slot:supportService.updateSlot(w,slot[1],payload)});
+    if(req.method==='POST'&&url.pathname==='/api/support/calendar/book')return response(res,201,{booking:supportService.book(w,payload)});
+    if(req.method==='POST'&&url.pathname==='/api/support/calendar/cancel')return response(res,200,supportService.cancelBooking(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/calendar/my'){
+     supportService.selfExport(w,payload);
+     return response(res,200,{bookings:supportService.bookings(w,{ticketId:payload.ticketId})});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/support/calendar/bookings')return response(res,200,{bookings:supportService.bookings(w)});
+    if(req.method==='GET'&&url.pathname==='/api/support/config')return response(res,200,supportService.settings(w));
+    if(req.method==='GET'&&url.pathname==='/api/support/settings')return response(res,200,supportService.settings(w));
+    if(req.method==='PATCH'&&url.pathname==='/api/support/settings')return response(res,200,supportService.updateSettings(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/chat'){
+     const created=!payload.ticketId;
+     return response(res,created?201:200,await supportService.receive(w,payload));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/support/handoff')return response(res,200,supportService.requestHandoff(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/thread')return response(res,200,supportService.thread(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/rating')return response(res,200,supportService.rate(w,payload));
+    if(req.method==='GET'&&url.pathname==='/api/support/routing/rules')return response(res,200,{rules:supportService.routingRules(w)});
+    if(req.method==='POST'&&url.pathname==='/api/support/routing/rules')return response(res,201,{rule:supportService.createRoutingRule(w,payload)});
+    const routing=url.pathname.match(/^\/api\/support\/routing\/rules\/([0-9a-f-]{36})$/i);
+    if(routing&&req.method==='DELETE')return response(res,200,supportService.deleteRoutingRule(w,routing[1]));
+    if(req.method==='GET'&&url.pathname==='/api/support/sla')return response(res,200,supportService.sla(w));
+    if(req.method==='PATCH'&&url.pathname==='/api/support/sla')return response(res,200,supportService.updateSla(w,payload));
+    if(req.method==='GET'&&url.pathname==='/api/support/alerts')return response(res,200,supportService.alerts(w));
+    if(req.method==='GET'&&url.pathname==='/api/support/notifications')return response(res,200,{notifications:supportService.listNotifications(w)});
+    const notification=url.pathname.match(/^\/api\/support\/notifications\/([0-9a-f-]{36})\/read$/i);
+    if(notification&&req.method==='POST')return response(res,200,supportService.markNotification(w,notification[1]));
+    if(req.method==='GET'&&url.pathname==='/api/support/macros')return response(res,200,{macros:supportService.macros(w)});
+    if(req.method==='POST'&&url.pathname==='/api/support/macros')return response(res,201,{macro:supportService.createMacro(w,payload)});
+    const macro=url.pathname.match(/^\/api\/support\/macros\/([0-9a-f-]{36})$/i);
+    if(macro&&req.method==='PATCH')return response(res,200,{macro:supportService.updateMacro(w,macro[1],payload)});
+    if(macro&&req.method==='DELETE')return response(res,200,{deleted:supportService.deleteMacro(w,macro[1])});
+    if(req.method==='POST'&&url.pathname==='/api/support/articles/import')return response(res,201,supportService.bulkArticles(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/articles/import-csv')return response(res,201,supportService.bulkArticles(w,{articles:parseSupportCsv(payload?.csv)}));
+    if(req.method==='GET'&&url.pathname==='/api/support/articles/search')return response(res,200,{articles:supportService.articleSearch(w,{q:url.searchParams.get('q')||'',category:url.searchParams.get('category')||'',locale:url.searchParams.get('locale')||'',active:url.searchParams.get('active')||undefined})});
+    if(req.method==='GET'&&url.pathname==='/api/support/articles')return response(res,200,{articles:supportService.listArticles(w)});
+    if(req.method==='POST'&&url.pathname==='/api/support/articles')return response(res,201,{article:supportService.addArticle(w,payload)});
+    const article=url.pathname.match(/^\/api\/support\/articles\/([0-9a-f-]{36})$/i);
+    if(article&&req.method==='PATCH')return response(res,200,{article:supportService.editArticle(w,article[1],payload)});
+    if(article&&req.method==='DELETE')return response(res,200,{deleted:supportService.removeArticle(w,article[1])});
+    if(req.method==='GET'&&url.pathname==='/api/support/customers')return response(res,200,{customers:supportService.customers(w)});
+    if(req.method==='POST'&&url.pathname==='/api/support/customers/lookup')return response(res,200,{profile:supportService.customerLookup(w,payload?.email)});
+    if(req.method==='GET'&&url.pathname==='/api/support/leads')return response(res,200,{leads:supportService.leads(w,{status:url.searchParams.get('status')||undefined})});
+    const lead=url.pathname.match(/^\/api\/support\/leads\/([0-9a-f-]{36})$/i);
+    if(lead&&req.method==='PATCH')return response(res,200,{lead:supportService.updateLead(w,lead[1],payload)});
+    if(req.method==='GET'&&url.pathname==='/api/support/appointments')return response(res,200,{appointments:supportService.appointments(w,{status:url.searchParams.get('status')||undefined})});
+    if(req.method==='POST'&&url.pathname==='/api/support/appointments')return response(res,201,{appointment:supportService.requestAppointment(w,payload)});
+    const appt=url.pathname.match(/^\/api\/support\/appointments\/([0-9a-f-]{36})$/i);
+    if(appt&&req.method==='PATCH')return response(res,200,{appointment:supportService.updateAppointment(w,appt[1],payload)});
+    if(req.method==='GET'&&url.pathname==='/api/support/metrics')return response(res,200,supportService.metrics(w));
+    if(req.method==='POST'&&url.pathname==='/api/support/files')return response(res,201,{file:supportService.uploadAttachment(w,payload)});
+    if(req.method==='POST'&&url.pathname==='/api/support/files/read')return response(res,200,{file:supportService.readAttachment(w,payload?.fileId,{ticketId:payload?.ticketId,sessionToken:payload?.sessionToken})});
+    if(req.method==='POST'&&url.pathname==='/api/support/files/list')return response(res,200,{files:supportService.sessionAttachments(w,payload)});
+    const files=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})\/files$/i);
+    if(files&&req.method==='GET')return response(res,200,{files:supportService.attachments(w,files[1])});
+    if(files&&req.method==='POST')return response(res,201,{file:supportService.uploadAttachment(w,{...payload,ticketId:files[1]},{staff:true})});
+    const fileRead=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})\/files\/([0-9a-f-]{36})$/i);
+    if(fileRead&&req.method==='GET')return response(res,200,{file:supportService.readAttachment(w,fileRead[2],{ticketId:fileRead[1],staff:true})});
+    if(req.method==='GET'&&url.pathname==='/api/support/reports')return response(res,200,supportService.reports(w,Number(url.searchParams.get('days')||7)));
+    if(req.method==='GET'&&url.pathname==='/api/support/audit')return response(res,200,{events:supportService.auditEvents(w)});
+    if(req.method==='GET'&&url.pathname==='/api/support/tickets/search')return response(res,200,{tickets:supportService.ticketSearch(w,{
+     q:url.searchParams.get('q')||'',status:url.searchParams.get('status')||'',priority:url.searchParams.get('priority')||'',assignedTo:url.searchParams.get('assignedTo')||''
+    })});
+    if(req.method==='GET'&&url.pathname==='/api/support/tickets')return response(res,200,{tickets:supportService.tickets(w,{status:url.searchParams.get('status')||undefined})});
+    const notes=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})\/notes$/i);
+    if(notes&&req.method==='GET')return response(res,200,{notes:supportService.notes(w,notes[1])});
+    if(notes&&req.method==='POST')return response(res,201,{note:supportService.addNote(w,notes[1],payload,owner?'owner':'staff')});
+    const reply=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})\/replies$/i);
+    if(reply&&req.method==='POST')return response(res,201,supportService.staffReply(w,reply[1],payload));
+    const ticket=url.pathname.match(/^\/api\/support\/tickets\/([0-9a-f-]{36})$/i);
+    if(ticket&&req.method==='GET')return response(res,200,supportService.ticketDetail(w,ticket[1]));
+    if(ticket&&req.method==='PATCH')return response(res,200,{ticket:supportService.updateTicket(w,ticket[1],payload)});
+    if(req.method==='POST'&&url.pathname==='/api/support/privacy/self/export')return response(res,200,supportService.selfExport(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/privacy/self/erase')return response(res,200,supportService.selfErase(w,payload));
+    if(req.method==='POST'&&url.pathname==='/api/support/privacy/export')return response(res,200,supportService.exportEmail(w,payload?.email));
+    if(req.method==='POST'&&url.pathname==='/api/support/privacy/erase')return response(res,200,{deleted:supportService.eraseEmail(w,payload?.email)});
+    return response(res,404,{error:'Not found'});
+   }
    if(unified&&req.method==='GET'&&url.pathname==='/api/advanced/summary'){
     const entries=[
      ['workflows','growth/workflows'],

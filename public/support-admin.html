@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A+ · Support Console</title><link rel="stylesheet" href="/support.css"><script src="/support-admin.js" defer></script></head>
+<body class="support-admin"><header class="admin-bar"><div class="brand-logo">A+</div><div><strong>Support Console</strong><small>Customer service · Tenant-isolated</small></div><a class="outline-link" href="/">Commerce dashboard</a></header>
+<main class="admin-container">
+<section class="admin-login panel" id="connectPanel"><h1>Connect your support workspace</h1><p>The admin token remains in this page's memory only and is never saved in browser storage.</p>
+<form id="connectForm" class="stack"><label>Workspace <input id="workspace" required value="default" autocomplete="off"></label>
+<label>Admin bearer token <input id="adminToken" type="password" required autocomplete="off"></label><button type="submit">Connect as owner</button></form>
+ <hr><h2>Staff login</h2><p>Use a staff account previously created by the workspace owner. Staff sessions expire after eight hours.</p>
+ <form id="staffLoginForm" class="stack"><label>Staff email <input id="staffEmail" type="email" maxlength="254" autocomplete="username" required></label>
+ <label>Password <input id="staffPassword" type="password" autocomplete="current-password" required></label><button type="submit">Sign in as staff</button></form></section>
+<div id="console" class="hidden">
+<div class="title-row"><div><h1>Customer service overview</h1><p id="workspaceLabel">Manage conversations, knowledge, and the support experience.</p></div><div class="button-row"><button id="refreshButton" class="outline" type="button">Refresh</button><button id="logoutButton" class="outline" type="button">Sign out</button></div></div>
+<div class="kpis" id="metrics" aria-live="polite"></div>
+<nav class="tabs" aria-label="Support console sections"><button type="button" class="active" data-section="inbox">Inbox</button><button type="button" data-section="customers">Customer histories</button><button type="button" data-section="leads">Opt-in leads</button><button type="button" data-section="appointments">Appointment requests</button><button type="button" data-section="knowledge">Knowledge base</button><button type="button" data-section="calendar">Internal calendar</button><button type="button" data-section="macros">Saved replies</button><button type="button" data-section="operations">Operations</button><button type="button" data-section="team" data-owner-only="true">Staff team</button><button type="button" data-section="settings">Settings</button><button type="button" data-section="privacy" data-owner-only="true">Privacy tools</button></nav>
+<section id="section-inbox" class="section"><div class="inbox-layout"><div class="panel"><div class="panel-title"><h2>Conversations</h2><select id="ticketFilter" aria-label="Filter tickets"><option value="">All</option><option value="open">Open</option><option value="pending">Needs attention</option><option value="resolved">Resolved</option></select></div><label class="search-label">Search tickets <input id="ticketQuery" maxlength="200" placeholder="Subject, name or email"></label><div id="tickets" class="ticket-list"></div></div>
+<div class="panel ticket-detail"><h2 id="ticketTitle">Select a conversation</h2><p id="ticketRating">No rating yet.</p><div id="ticketHistory" class="ticket-history" role="log" aria-label="Ticket messages"></div>
+<div id="ticketAttachmentPanel" class="attachments-panel hidden"><h3>Conversation files</h3>
+<div class="compose"><input id="staffFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.csv" aria-label="Choose a file to attach"><button id="staffUpload" type="button">Attach file</button></div>
+<div id="ticketFiles" class="article-list"></div></div>
+<div id="ticketNotes" class="article-list"></div><form id="noteForm" class="stack hidden"><label>Private staff note <textarea id="noteBody" maxlength="4000" rows="2" required></textarea></label><button type="submit" class="outline">Save internal note</button></form><form id="ticketControls" class="stack hidden"><div class="control-grid"><label>Status <select id="ticketStatus"><option value="open">Open</option><option value="pending">Needs attention</option><option value="resolved">Resolved</option></select></label><label>Priority <select id="ticketPriority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label></div>
+<label>Assigned to <input id="ticketAssignee" maxlength="120" placeholder="Team member"></label><button type="submit" class="outline">Save ticket</button></form>
+<form id="replyForm" class="stack hidden"><label>Insert a saved reply <select id="replyMacro"><option value="">Select a saved response</option></select></label><label>Reply as a human agent <textarea id="agentReply" maxlength="4000" rows="3" required></textarea></label><button type="submit">Add agent reply</button><small>Agent messages are saved to the conversation. No email or SMS is sent by this action.</small></form></div></div></section>
+<section id="section-customers" class="section hidden"><div class="two-up"><div class="panel"><h2>Self-declared customer profiles</h2><p>These histories are grouped only by email supplied in chat; A+ has not verified that the senders own those addresses.</p><div id="customersList" class="article-list"></div></div><div class="panel"><h2>Conversation history</h2><div id="customerHistory" class="article-list"><p>Select a profile to review previous support tickets.</p></div></div></div></section>
+<section id="section-leads" class="section hidden"><div class="panel"><h2>Consented customer leads</h2><p>Only customers who expressly requested contact appear in this list. Sending a follow-up requires your own permission checks and contact process.</p><div id="leadsList" class="article-list"></div></div></section>
+<section id="section-appointments" class="section hidden"><div class="panel"><h2>Appointment requests</h2><p>These are proposed appointments only. Updating the review status does not create a calendar event or confirm a booking.</p><div id="appointmentsList" class="article-list"></div></div></section>
+<section id="section-knowledge" class="section hidden"><div class="two-up"><div class="panel"><h2>Add an approved answer</h2><p>Only published answers are eligible for automated replies. Confirm accuracy before publishing.</p><form id="articleForm" class="stack"><label>Customer question <input id="articleQuestion" maxlength="500" required></label><label>Verified answer <textarea id="articleAnswer" maxlength="4000" rows="5" required></textarea></label><label>Category <input id="articleCategory" maxlength="80" placeholder="Returns, Sales, Services…"></label><label>Language <select id="articleLocale"><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option></select></label><button type="submit">Publish knowledge</button></form></div><div class="panel"><h2>Published knowledge</h2><label>Search the knowledge base <input id="knowledgeQuery" maxlength="200" placeholder="Find questions and answers"></label><div id="articles" class="article-list"></div></div></div>
+  <div class="panel max-panel" data-manager-only="true" style="margin-top:16px"><h2>Bulk knowledge import</h2>
+  <p>Import up to 100 verified knowledge rows in a JSON or CSV file. Fields: question, answer, locale, category, active. The entire file is rejected if any record is invalid.</p>
+  <form id="knowledgeImportForm" class="stack"><label>Knowledge JSON or CSV file <input id="articleImportFile" type="file" accept="application/json,text/csv,.json,.csv" required></label><button type="submit">Import approved knowledge</button></form></div></section>
+<section id="section-calendar" class="section hidden"><div class="two-up">
+ <div class="panel"><h2>Merchant-controlled appointment slots</h2><p>These are A+ internal reservations only. No external calendar receives them.</p>
+ <form id="slotForm" class="stack" data-manager-only="true">
+ <label>Service <input id="slotService" maxlength="140" required></label>
+ <label>Available date and time <input id="slotTime" type="datetime-local" required></label>
+ <label>Duration in minutes <input id="slotDuration" type="number" min="15" max="480" value="30" required></label>
+ <label>Concurrent capacity <input id="slotCapacity" type="number" min="1" max="20" value="1" required></label>
+ <button type="submit">Create available slot</button></form><div id="calendarSlots" class="article-list"></div></div>
+ <div class="panel"><h2>Internal reservations</h2><div id="calendarBookings" class="article-list"></div></div></div></section>
+ <section id="section-macros" class="section hidden"><div class="two-up">
+ <div class="panel"><h2>Reusable responses</h2><form id="macroForm" class="stack" data-manager-only="true">
+ <label>Reply title <input id="macroTitle" maxlength="100" required></label><label>Message <textarea id="macroBody" rows="4" maxlength="4000" required></textarea></label>
+ <button type="submit">Save reusable reply</button></form><p>Agents can insert saved responses into the composer, review them, and send manually.</p></div>
+ <div class="panel"><h2>Saved responses</h2><div id="macroList" class="article-list"></div></div></div></section>
+ <section id="section-operations" class="section hidden"><div class="two-up">
+ <div class="panel"><h2>Unreviewed support events</h2><div id="supportNotifications" class="article-list"></div>
+ <h2 class="section-subtitle">Response-time alerts</h2><div id="slaAlerts" class="article-list"></div></div>
+ <div class="panel"><h2>Service targets</h2><p>Times are elapsed minutes, not business-hours calculations. Alerts appear in this dashboard only.</p>
+ <form id="slaForm" class="stack" data-manager-only="true"><label>First staff response target (minutes) <input id="slaFirst" type="number" min="1" max="10080" required></label>
+ <label>Resolution target (minutes) <input id="slaResolution" type="number" min="1" max="43200" required></label><button type="submit">Save service targets</button></form>
+ <h2 class="section-subtitle">Ticket routing rules</h2><p>When a customer needs human help, A+ assigns the request to an available staff account with the lightest open workload.</p>
+<form id="routingForm" class="stack" data-manager-only="true">
+<label>Priority phrase <input id="routingPhrase" maxlength="80" placeholder="refund, missing delivery..." required></label>
+<label>Priority <select id="routingPriority"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
+<button type="submit">Add routing rule</button></form><div id="routingList" class="article-list"></div>
+<h2 class="section-subtitle">Last seven days</h2><div id="trendList" class="trend-list"></div></div></div></section>
+ <section id="section-team" class="section hidden"><div class="two-up">
+ <div class="panel"><h2>Create team member</h2><p>Staff members get individual, revocable access only to the customer-service console.</p>
+ <form id="teamForm" class="stack">
+ <label>Full name <input id="memberName" maxlength="120" required></label>
+ <label>Email <input id="memberEmail" type="email" maxlength="254" required></label>
+ <label>Password (12+ characters) <input id="memberPassword" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label>
+ <label>Access level <select id="memberRole"><option value="agent">Agent</option><option value="manager">Manager</option></select></label>
+ <button type="submit">Add staff member</button></form></div>
+ <div class="panel"><h2>Team accounts</h2><div id="teamList" class="article-list"></div></div></div></section>
+ <section id="section-settings" class="section hidden"><div class="panel max-panel"><h2>Customer-facing settings</h2><form id="settingsForm" class="stack"><label>Business display name <input id="businessNameInput" maxlength="100" required></label>
+<label>White-label logo letters <input id="logoTextInput" maxlength="20" required></label><label>Welcome message (English) <textarea id="greetingInput" maxlength="500" rows="3" required></textarea></label>
+<label>Welcome message (Spanish) <textarea id="greetingEsInput" maxlength="500" rows="2" required></textarea></label>
+<label>Welcome message (French) <textarea id="greetingFrInput" maxlength="500" rows="2" required></textarea></label><label>Business hours <input id="businessHoursInput" maxlength="500"></label><label>Default language <select id="defaultLocaleInput"><option value="en">English</option><option value="es">Español</option><option value="fr">Français</option></select></label><label>Brand color <input id="brandColorInput" type="color"></label><button type="submit">Save settings</button></form><p>Customer page: <a id="supportPageLink" target="_blank" rel="noopener noreferrer">Open support widget</a></p></div></section>
+<section id="section-privacy" class="section hidden"><div class="panel max-panel"><h2>Customer support data</h2><p>Export or erase tickets associated with a verified email. These actions do not alter unrelated commerce analytics subjects.</p><form id="privacyForm" class="stack"><label>Customer email <input id="privacyEmail" type="email" required maxlength="254"></label><div class="button-row"><button type="submit" value="export">Export records</button><button type="submit" value="erase" class="danger">Erase records</button></div></form><pre id="privacyResult" class="result-pre"></pre></div></section>
+</div><p id="feedback" role="status" aria-live="polite" class="notice"></p></main></body></html>

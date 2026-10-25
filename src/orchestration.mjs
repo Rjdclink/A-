@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {first,all,run,enqueue,now} from '../integrations/automation/src/core.mjs';
-const EVENTS=new Set(['recovery.analysis','commerce.visit','commerce.cart','commerce.checkout','commerce.purchase','commerce.lead']);
+const EVENTS=new Set(['recovery.analysis','commerce.visit','commerce.cart','commerce.checkout','commerce.purchase','commerce.lead','support.ticket_created','support.handoff_required','support.ticket_updated','support.agent_replied','support.lead_captured','support.appointment_requested','support.customer_replied','support.booking_confirmed','support.booking_cancelled']);
 function fault(message,status=400){const e=Error(message);e.status=status;throw e;}
 export function createOrchestration(ledgerDb,growthDb){
  ledgerDb.exec("CREATE TABLE IF NOT EXISTS growth_workflow_links(workspace TEXT NOT NULL,id TEXT NOT NULL,event TEXT NOT NULL,workflow_id TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,PRIMARY KEY(workspace,id),UNIQUE(workspace,event,workflow_id));");
@@ -14,7 +14,10 @@ export function createOrchestration(ledgerDb,growthDb){
    const flow=first(growthDb,'SELECT * FROM workflows WHERE id=? AND tenant_id=? AND enabled=1 AND allow_external=0',link.workflow_id,'aplus:'+workspace);
    if(!flow)continue;
    // Never copy customer identities or raw scraped HTML into agent prompts.
-   enqueue(growthDb,flow,{...data,source_event:event,triggered_at:new Date(now()).toISOString()});
+   const safeData=event.startsWith('support.')?{ticket:{
+    id:data?.ticket?.id,status:data?.ticket?.status,priority:data?.ticket?.priority,channel:data?.ticket?.channel
+   }}:data;
+   enqueue(growthDb,flow,{...safeData,source_event:event,triggered_at:new Date(now()).toISOString()});
    total++;
   }
   return total;
