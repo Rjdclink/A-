@@ -72,3 +72,17 @@ test('Neon scheduled task endpoint only accepts attested trigger invocations',as
  assert.equal(reply.ok,true);
  assert.equal(reply.maintenance,'processed');
 });
+
+test('customer recovery persists across Neon requests and commerce purchase stops follow-ups without login',async()=>{
+ const pool=new FakePool();const call=async(path,data)=>{const app=createNeonApp({pool,env:{AUTO_BACKUP_HOURS:'0'}});const r=await app.fetch(req(path,data?'POST':'GET',data));const body=await r.json();assert.ok(r.ok,path+': '+JSON.stringify(body));return body;};
+ const root='/api/recovery/engine/';
+ await call(root+'contacts',{customer_id:'buyer-42',email:'buyer42@example.com',email_consent:true,sms_consent:false,consent_source:'checkout opt-in'});
+ await call(root+'signals',{id:'checkout-42',customer_id:'buyer-42',type:'checkout',amount_cents:4200,currency:'USD',return_url:'https://example.com/checkout'});
+ const cases=await call(root+'cases');assert.equal(cases.cases.length,1);assert.equal(cases.cases[0].status,'active');
+ assert.equal((await call(root+'settings')).settings.enabled,false);
+ await call('/api/events',{id:'order-42',type:'purchase',value:42,currency:'USD',consent:true,customerId:'buyer-42'});
+ assert.equal((await call(root+'cases')).cases[0].status,'purchased');
+ const exported=await call('/api/privacy/export',{subjectId:'buyer-42'});assert.equal(exported.recovery.contact.email,'buyer42@example.com');
+ await call('/api/privacy/erase',{subjectId:'buyer-42'});assert.equal((await call(root+'cases')).cases.length,0);
+ const denied=await createNeonApp({pool,env:{}}).fetch(req('/api/recovery/webhooks/stripe','POST',{type:'invoice.paid'}));assert.equal(denied.status,401);
+});

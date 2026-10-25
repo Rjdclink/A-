@@ -8,7 +8,7 @@ import {parseSupportCsv} from './support-csv.mjs';
 const securityHeaders={
  'cache-control':'no-store, max-age=0',
  'cdn-cache-control':'no-store',
- 'x-aplus-release':'public-access-10',
+ 'x-aplus-release':'recovery-11',
  'x-content-type-options':'nosniff',
  'referrer-policy':'no-referrer',
  'x-frame-options':'DENY',
@@ -162,7 +162,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
      ledger.eraseWorkspace(workspace,{shopDomain:domain});supportService?.eraseWorkspace(workspace);unified?.recovery.eraseWorkspace(workspace);unified?.erase(workspace);return response(res,200,{received:true});
     }
     if(topic==='customers/redact'){
-     if(data.customer?.id!=null)ledger.eraseCustomer(workspace,String(data.customer.id));
+     if(data.customer?.id!=null){ledger.eraseCustomer(workspace,String(data.customer.id));unified?.engine?.eraseCustomer(workspace,String(data.customer.id));}
      ledger.redactShopifyOrders(workspace,domain,data.orders_to_redact);
      return response(res,200,{received:true});
     }
@@ -174,6 +174,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
      if(!shop.allowOrders||!ledger.shopActive(workspace,domain))return response(res,202,{received:true,imported:false});
      const normalized=shopifyOrder(data);
      const result=ledger.add(workspace,'shopify:'+domain+':'+String(data.id),normalized);
+     if(result.status==='created'&&unified?.engine&&normalized.customerId)unified.engine.signal(workspace,{id:'shopify:'+domain+':'+String(data.id),customer_id:normalized.customerId,type:'purchase',amount_cents:Math.round(normalized.value*100),currency:normalized.currency});
      if(result.status==='created'&&unified)await unified.emit(workspace,'commerce.purchase',{event_id:'shopify:'+domain+':'+String(data.id),commerce:{type:'purchase',revenue:normalized.value,campaign:normalized.campaign||'shopify'}});
      return response(res,result.status==='created'?201:result.status==='suppressed'?202:200,{received:true,duplicate:result.status==='duplicate',suppressed:result.status==='suppressed'});
     }
@@ -182,6 +183,16 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    if(unified&&req.method==='POST'&&(/^\/api\/growth\/hooks\/[0-9a-f-]{36}$/i.test(url.pathname)||url.pathname==='/api/growth/billing/webhook/square')){
     const result=await unified.webhook(req,url.pathname.slice('/api/growth/'.length));
     return response(res,result.status,result.data);
+   }
+   if(unified?.engine&&req.method==='POST'&&['/api/recovery/webhooks/stripe','/api/recovery/webhooks/twilio'].includes(url.pathname)){
+    const raw=await bytes(req,65536);
+    const result=url.pathname.endsWith('/stripe')?await unified.engine.stripeEvent(publicWorkspace,raw,req.headers['stripe-signature']):unified.engine.twilioEvent(publicWorkspace,raw,req.headers['x-twilio-signature']);
+    if(url.pathname.endsWith('/twilio')){res.writeHead(200,{...securityHeaders,'content-type':'text/xml'});res.end('<Response/>');return;}
+    return response(res,200,result);
+   }
+   if(unified?.engine&&url.pathname==='/recovery/unsubscribe'){
+    if(req.method==='GET'){res.writeHead(200,{...securityHeaders,'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'none'; form-action 'self'"});res.end('<!doctype html><title>Stop recovery messages</title><h1>Stop recovery messages</h1><form method="post"><button>Unsubscribe</button></form>');return;}
+    if(req.method==='POST')return response(res,200,unified.engine.unsubscribe(requiredWorkspace(url),url.searchParams.get('customer'),url.searchParams.get('token')));
    }
    if(!url.pathname.startsWith('/api/'))return response(res,404,{error:'Not found'});
    const preloaded=req.method==='POST'&&url.pathname==='/api/events'?await parseJSON(req):null;
@@ -338,6 +349,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    if(req.method==='POST'&&url.pathname==='/api/events'){
     const input=preloaded;
     const result=ledger.add(w,input.id,input);
+    if(result.status==='created'&&unified?.engine&&input.type==='purchase'&&input.customerId)unified.engine.signal(w,{id:'commerce:'+input.id,customer_id:input.customerId,type:'purchase',amount_cents:Math.round(Number(input.value||0)*100),currency:input.currency||'USD'});
     if(result.status==='created'&&unified)await unified.emit(w,'commerce.'+input.type,{event_id:input.id,commerce:{type:input.type,campaign:String(input.campaign||''),... (input.type==='purchase'?{revenue:Number(input.value)||0}:{})}});
     return response(res,result.status==='created'?201:result.status==='suppressed'?202:200,{id:input.id,deduplicated:result.status==='duplicate',suppressed:result.status==='suppressed'});
    }
@@ -365,11 +377,11 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    if(match&&req.method==='GET'&&!match[2])return response(res,200,ledger.experimentReport(w,match[1]));
    if(req.method==='POST'&&url.pathname==='/api/privacy/erase'){
     const input=await parseJSON(req);if(typeof input.subjectId!=='string'||input.subjectId.length>120||!input.subjectId)fail(400,'Invalid subject token');
-    return response(res,200,{deleted:ledger.eraseCustomer(w,input.subjectId)});
+    unified?.engine?.eraseCustomer(w,input.subjectId);return response(res,200,{deleted:ledger.eraseCustomer(w,input.subjectId)});
    }
    if(req.method==='POST'&&url.pathname==='/api/privacy/export'){
     const input=await parseJSON(req);if(typeof input.subjectId!=='string'||input.subjectId.length>120||!input.subjectId)fail(400,'Invalid subject token');
-    return response(res,200,{events:ledger.exportCustomer(w,input.subjectId)});
+    return response(res,200,{events:ledger.exportCustomer(w,input.subjectId),recovery:unified?.engine?.exportCustomer(w,input.subjectId)});
    }
    if(req.method==='GET'&&url.pathname==='/api/privacy/requests')return response(res,200,{requests:ledger.pendingPrivacyRequests(w)});
    if(req.method==='POST'&&url.pathname==='/api/privacy/requests/complete'){const input=await parseJSON(req);if(input.deliveryConfirmed!==true)fail(400,'Merchant delivery confirmation required');return response(res,200,{completed:ledger.completePrivacyRequest(w,input.requestId)});}

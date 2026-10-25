@@ -1,3 +1,4 @@
+import {createRecoveryEngine} from './recovery-engine.mjs';
 import {serviceSettings} from './service-settings.mjs';
 import {advisory} from './ai.mjs';
 import {createHmac} from 'node:crypto';
@@ -31,6 +32,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
  const growth=createApp({dbPath:automationDbPath,env,autoStart});
  const orchestration=createOrchestration(ledger.db,growth.db);
  const neon=neonIntegration||createNeonIntegration({env});
+ const engine=createRecoveryEngine(ledger.db,{env,mail:mailer(env),...recoveryOptions.engine});
  const recovery=createRecovery(ledger.db,{...recoveryOptions,env,mail:mailer(env),onOpportunity:async(workspace,site)=>{
   const evidence={opportunity:{website:site.website,summary:site.analysis?.summary||'',score:site.analysis?.priority_score??null}};
   await orchestration.emit(workspace,'recovery.analysis',evidence);
@@ -74,6 +76,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   return {status:upstream.status,data:parsed};
  }
  async function handle(workspace,path,method,payload){
+  if(path.startsWith('recovery/engine/'))return {status:200,data:await engine.handle(workspace,path.slice(16),method,payload||{})};
   if(path==='integrations/settings'&&method==='GET')return {status:200,data:services.status()};
   if(path==='integrations/settings'&&method==='POST'){try{return {status:200,data:services.save(payload?.values)};}catch(e){return {status:400,data:{error:e.message}};}}
   if(path==='integrations/status'&&method==='GET'){
@@ -129,7 +132,8 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   const raw=await upstream.text();let data;try{data=JSON.parse(raw);}catch{data={error:'Invalid upstream response'};}
   return {status:upstream.status,data};
  }
- const interval=autoStart?setInterval(()=>recovery.tick().catch(e=>console.error('Recovery scheduler:',e.message)),60000):null;
+ const tick=async()=>{await recovery.tick();await engine.tick();};
+ const interval=autoStart?setInterval(()=>tick().catch(e=>console.error('Recovery scheduler:',e.message)),60000):null;
  interval?.unref();
  async function close(){
   if(interval)clearInterval(interval);growth.stop();
@@ -143,5 +147,5 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   }
   return queued;
  }
- return {handle,webhook,recovery,close,growth,emit,env,adviser:args=>advisory({...args,env}),erase:orchestration.erase};
+ return {handle,webhook,recovery:{...recovery,tick,eraseWorkspace:w=>{recovery.eraseWorkspace(w);engine.erase(w);}},engine,close,growth,emit,env,adviser:args=>advisory({...args,env}),erase:orchestration.erase};
 }

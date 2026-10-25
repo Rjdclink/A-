@@ -25,7 +25,7 @@ async function forward(request,dir,saved,env,{tickWorkers=false}={}){
  const commerce=join(dir,'commerce.sqlite'),automation=join(dir,'automation.sqlite');
  if(saved.commerce)await writeFile(commerce,saved.commerce);
  if(saved.automation)await writeFile(automation,saved.automation);
- const appEnv={...env,PUBLIC_DASHBOARD:'true',PUBLIC_WORKSPACE:'default',ALLOW_SIGNUP:'false',
+ const appEnv={...env,RECOVERY_PUBLIC_URL:env.RECOVERY_PUBLIC_URL||'https://br-sweet-mode-b4p7cw35-aplus.compute.c-6.us-east-2.aws.neon.tech',PUBLIC_DASHBOARD:'true',PUBLIC_WORKSPACE:'default',ALLOW_SIGNUP:'false',
   ADMIN_TOKEN:saved.admin_token,INGEST_TOKEN:saved.ingest_token,PSEUDONYM_KEY:saved.pseudonym_key,
   DB_PATH:commerce,AUTOMATION_DB_PATH:automation,AUTO_BACKUP_HOURS:'0',SESSION_COOKIE_SECURE:'true'};
  let ledger,unified,server;

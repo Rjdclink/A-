@@ -10,7 +10,7 @@ function money(x){return new Intl.NumberFormat('en-US',{style:'currency',currenc
 function identity(){return S.public?{workspace:S.publicWorkspace,token:''}:{workspace:$('workspace').value.trim(),token:$('token').value};}
 async function api(path,method='GET',payload){
  const {workspace,token}=identity();if(!workspace||(!S.public&&!token))throw Error('Connect your workspace first.');
- const url=path+(path.includes('?')?'&':'?')+'workspace='+encodeURIComponent(workspace)+'&release=public-access-10';
+ const url=path+(path.includes('?')?'&':'?')+'workspace='+encodeURIComponent(workspace)+'&release=recovery-11';
  const response=await fetch(url,{cache:'no-store',method,headers:{...(S.public?{}:{authorization:'Bearer '+token}),...(payload!==undefined?{'content-type':'application/json'}:{})},body:payload===undefined?undefined:JSON.stringify(payload)});
  let result;try{result=await response.json();}catch{throw Error('Invalid server response');}
  if(!response.ok)throw Error(result.error||'Request failed ('+response.status+')');return result;
@@ -60,6 +60,7 @@ $('spendForm').addEventListener('submit',async event=>{event.preventDefault();co
 $('experimentForm').addEventListener('submit',async event=>{event.preventDefault();try{const id=new FormData(event.currentTarget).get('experimentId');const r=await api('/api/experiments','POST',{id});txt('experimentOutput','Experiment '+id+': '+r.status);}catch(e){txt('experimentOutput',e.message);}});
 $('reportForm').addEventListener('submit',async event=>{event.preventDefault();try{const id=new FormData(event.currentTarget).get('reportId');const r=await api('/api/experiments/'+encodeURIComponent(id));txt('experimentOutput',JSON.stringify(r,null,2));}catch(e){txt('experimentOutput',e.message);}});
 async function loadRecovery(){
+ await loadRecoveryEngine();
  const [summary,sites,drafts,leads,routines]=await Promise.all([api('/api/recovery/overview'),api('/api/recovery/sites'),api('/api/recovery/outreach'),api('/api/recovery/leads'),api('/api/recovery/routines')]);
  txt('recoverySites',summary.analyzed);txt('recoveryLeads',summary.leads);txt('recoveryDrafts',summary.drafts);
  $('discoveryEnabled').checked=!!routines.routine.discover_enabled;
@@ -164,7 +165,7 @@ $('billingRefresh').addEventListener('click',()=>loadSettings().catch(notice));
 $('neonRefresh').addEventListener('click',()=>loadSettings().catch(notice));
 async function start(){
  try{
-  const res=await fetch('/api/dashboard-config?release=public-access-10',{cache:'no-store'});
+  const res=await fetch('/api/dashboard-config?release=recovery-11',{cache:'no-store'});
   if(!res.ok)throw Error('Unable to load dashboard configuration');
   const config=await res.json();
   S.public=config.public===true;
@@ -297,3 +298,33 @@ $('billingCancel').addEventListener('click',async()=>{
 });
 
 $('saveServices').addEventListener('click',async()=>{try{const values={};for(const input of document.querySelectorAll('[data-setting]'))if(input.value)values[input.dataset.setting]=input.value;await api('/api/integrations/settings','POST',{values});txt('serviceSettingsStatus','Saved. Connected features use these settings immediately.');await loadSettings();}catch(e){txt('serviceSettingsStatus',e.message);}});
+
+async function loadRecoveryEngine(){
+ const [policy,cases,report,deliveries,invoices,readiness]=await Promise.all(['settings','cases','report','deliveries','invoices','readiness'].map(p=>api('/api/recovery/engine/'+p)));
+ const f=$('recoveryPolicyForm');for(const key of ['copy_mode','experiment','holdout_percent','window_days','min_gap_hours'])f.elements[key].value=policy.settings[key];
+ f.elements.enabled.checked=policy.settings.enabled;for(const [i,key]of ['first','second','third'].entries())f.elements[key].value=policy.settings.steps[i]?.delay_hours||[2,24,48][i];
+ txt('recoveryEngineStatus',policy.settings.enabled?'Automatic follow-ups enabled. Consent, holdouts and frequency limits apply.':'Automatic follow-ups paused. Review cases and configure your sequence.');
+ $('recoveryEngineStatus').append(document.createTextNode(' Setup: '+['email','sms','ai','stripe','unsubscribe'].map(k=>k+' '+(readiness[k]?'configured':'not configured')).join(' · ')));
+ $('recoveryCaseList').replaceChildren();if(!cases.cases.length)blank('recoveryCaseList','No customer signals yet. Add a consented contact and a cart, checkout or inquiry event.');
+ for(const c of cases.cases){const actions=[btn('Preview & evidence',async()=>{try{const d=await api('/api/recovery/engine/cases/'+c.id+'/preview');txt('recoveryPreview',(d.proposed_copy?'Proposed copy ('+d.proposed_copy.mode+', '+d.proposed_copy.status+'):\n'+d.proposed_copy.subject+'\n'+d.proposed_copy.body+'\n\nDefault sequence copy:\n':'')+d.email.subject+'\n\n'+d.email.body+'\n\nSMS: '+d.sms.body+'\n\nEvidence: '+JSON.stringify(c.evidence,null,2));}catch(e){notice(e);}})];
+  if(c.status==='active'&&c.arm==='treatment'){
+   actions.push(btn('Draft with AI',async()=>{try{const r=await api('/api/recovery/engine/cases/'+c.id+'/draft','POST',{});txt('recoveryPreview','REVIEW REQUIRED · '+r.draft.mode+'\n'+r.draft.subject+'\n\n'+r.draft.body+'\n\nEvidence: '+JSON.stringify(r.draft.evidence,null,2));}catch(e){notice(e);}}));
+   actions.push(btn('Review & approve draft',async()=>{try{const r=await api('/api/recovery/engine/cases/'+c.id+'/preview');if(!r.proposed_copy)throw Error('Generate a draft first.');txt('recoveryPreview',r.proposed_copy.subject+'\n\n'+r.proposed_copy.body+'\n\nEvidence: '+JSON.stringify(c.evidence,null,2));if(!confirm('Approve this email for scheduled follow-ups?\n\n'+r.proposed_copy.subject+'\n\n'+r.proposed_copy.body))return;await api('/api/recovery/engine/cases/'+c.id+'/approve','POST',{confirm:true});txt('recoveryEngineStatus','Draft approved. Sending still follows consent, timing and holdout rules.');}catch(e){notice(e);}}));
+  }
+  if(c.status==='active'){actions.push(btn('Stop follow-ups',async()=>{try{await api('/api/recovery/engine/cases/'+c.id+'/stop','POST',{});await loadRecoveryEngine();}catch(e){notice(e);}}));if(c.arm==='treatment')actions.push(btn('Send due message',async()=>{if(!confirm('Send the next due, consented message for '+c.customer_id+'?'))return;try{const r=await api('/api/recovery/engine/cases/'+c.id+'/send','POST',{confirm:true});await loadRecoveryEngine();txt('recoveryEngineStatus',r.accepted?'Provider accepted message.':r.review_required?'Delivery unknown. Check your provider; no automatic resend.':'Message not sent: '+r.skipped);}catch(e){notice(e);}}));}
+  $('recoveryCaseList').append(line(c.customer_id+' · '+c.kind+' · Priority '+c.score,(c.amount_cents/100).toFixed(2)+' '+c.currency+' opportunity value',actions,c.status+' · '+c.arm+' · '+c.experiment+' · Copy '+c.variant));
+ }
+ $('recoveryLift').replaceChildren();if(!report.cohorts.length)blank('recoveryLift','Experiments will appear after the first customer signal.');
+ for(const g of report.cohorts){const mature=g.treatment.mature+g.holdout.mature;const lift=g.incremental_revenue_cents===null?'Awaiting mature treatment and holdout groups':(g.incremental_revenue_cents/100).toFixed(2)+' '+g.currency+' estimated incremental revenue';
+  $('recoveryLift').append(line(g.experiment+' · '+g.currency,lift,[],`${mature} mature / ${g.treatment.enrolled+g.holdout.enrolled} enrolled · Treatment ${g.treatment.conversions}/${g.treatment.mature} converted · Holdout ${g.holdout.conversions}/${g.holdout.mature} · ${g.window_days}-day window`));
+  const a=g.variants.A,b=g.variants.B;const note=g.copy_comparison.status==='insufficient_data'?'More mature customers and conversions needed before choosing a copy winner.':'Exploratory copy comparison: '+g.copy_comparison.status+'. Choose A or B in a new experiment; repeated looks are not confirmatory evidence.';
+  $('recoveryLift').append(line('Copy comparison',`A: ${a.conversions}/${a.mature} · B: ${b.conversions}/${b.mature}`,[],note));
+ }
+ $('recoveryDeliveryList').replaceChildren();if(!deliveries.deliveries.length)blank('recoveryDeliveryList','No recovery messages attempted.');for(const d of deliveries.deliveries.slice(0,20))$('recoveryDeliveryList').append(line(d.channel+' · '+d.status,d.subject||'Channel skipped',[],new Date(d.created_at).toLocaleString()));
+ $('recoveryInvoiceList').replaceChildren();if(!invoices.invoices.length)blank('recoveryInvoiceList','Connect Stripe recovery access, then sync failed invoices.');for(const i of invoices.invoices){const actions=[btn('Refresh invoice',async()=>{try{await api('/api/recovery/engine/invoices/sync','POST',{invoice_id:i.id});await loadRecoveryEngine();}catch(e){notice(e);}})];const row=line(i.id+' · '+i.status,(i.amount_cents/100).toFixed(2)+' '+i.currency+' remaining',actions,i.next_attempt?'Next provider retry: '+new Date(i.next_attempt).toLocaleString():'No next retry reported; check Stripe settings or payment method.');if(i.hosted_url){const link=node('a','Open secure invoice ↗','secondary');link.href=i.hosted_url;link.target='_blank';link.rel='noopener noreferrer';row.append(link);}$('recoveryInvoiceList').append(row);}
+}
+$('refreshRecoveryEngine').addEventListener('click',()=>loadRecoveryEngine().catch(notice));
+$('recoveryPolicyForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/api/recovery/engine/settings','POST',{copy_mode:f.get('copy_mode'),enabled:f.has('enabled'),experiment:f.get('experiment'),holdout_percent:Number(f.get('holdout_percent')),window_days:Number(f.get('window_days')),min_gap_hours:Number(f.get('min_gap_hours')),max_messages:3,steps:['first','second','third'].map((k,i)=>({channel:i===2?'sms':'email',delay_hours:Number(f.get(k))}))});await loadRecoveryEngine();}catch(err){notice(err);}});
+$('recoverySignalForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/api/recovery/engine/contacts','POST',{customer_id:f.get('customer_id'),email:f.get('email'),phone:f.get('phone'),email_consent:f.has('email_consent'),sms_consent:f.has('sms_consent'),consent_source:f.get('consent_source')});await api('/api/recovery/engine/signals','POST',{id:f.get('id'),customer_id:f.get('customer_id'),type:f.get('type'),amount_cents:Number(f.get('amount_cents')),currency:f.get('currency'),return_url:f.get('return_url'),evidence:f.get('evidence')});await loadRecoveryEngine();}catch(err){notice(err);}});
+$('recoveryOutcomeForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/api/recovery/engine/signals','POST',{id:f.get('id'),customer_id:f.get('customer_id'),type:f.get('type'),amount_cents:Number(f.get('amount_cents')),currency:f.get('currency')});await loadRecoveryEngine();}catch(err){notice(err);}});
+$('syncRecoveryInvoices').addEventListener('click',async()=>{try{const r=await api('/api/recovery/engine/invoices/sync','POST',{});await loadRecoveryEngine();txt('recoveryEngineStatus',`Synced ${r.synced} failed invoices.`+(r.note?' '+r.note:''));}catch(e){notice(e);}});

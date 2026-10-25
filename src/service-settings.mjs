@@ -1,5 +1,8 @@
 import {createCipheriv,createDecipheriv,randomBytes,createHmac} from 'node:crypto';
 export const SERVICE_FIELDS={
+ RECOVERY_PUBLIC_URL:{label:'Public dashboard HTTPS URL (unsubscribe links)'},
+ RECOVERY_STRIPE_KEY:{label:'Stripe recovery read access key',secret:true},RECOVERY_STRIPE_WEBHOOK_SECRET:{label:'Stripe recovery webhook signing secret',secret:true},
+ RECOVERY_TWILIO_SID:{label:'Recovery SMS Twilio Account SID'},RECOVERY_TWILIO_TOKEN:{label:'Recovery SMS Twilio auth token',secret:true},RECOVERY_TWILIO_FROM:{label:'Recovery SMS sender (E.164)'},RECOVERY_TWILIO_WEBHOOK_URL:{label:'Recovery SMS inbound webhook HTTPS URL'},
  AI_BASE_URL:{label:'AI chat-completions HTTPS endpoint'},AI_MODEL:{label:'AI model'},AI_API_KEY:{label:'AI API key',secret:true},
  RECOVERY_SMTP_HOST:{label:'SMTP hostname'},RECOVERY_SMTP_PORT:{label:'SMTP port (465 or 587)'},RECOVERY_SMTP_USER:{label:'SMTP username'},RECOVERY_SMTP_PASS:{label:'SMTP password / app password',secret:true},RECOVERY_SMTP_FROM:{label:'Sender email address'},
  SHOPIFY_SECRET:{label:'Shopify webhook signing secret',secret:true},SHOPIFY_SHOPS_JSON:{label:'Shopify store → workspace mapping (JSON)'},SHOPIFY_ANALYTICS_BASIS_ACKNOWLEDGED:{label:'Import approved Shopify orders (true/false)'},
@@ -21,7 +24,9 @@ export function serviceSettings(db,env){
   for(const [name,value] of Object.entries(values)){
    if(!Object.hasOwn(SERVICE_FIELDS,name)||typeof value!=='string'||value.length>8000||/[\r\n\0]/.test(value))throw Error('Invalid service setting');
    if(value===''){delete saved[name];continue;}
-   if(name==='AI_BASE_URL'||name==='SQUARE_WEBHOOK_URL'){const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password)throw Error('AI endpoint requires HTTPS');}
+   if(name==='AI_BASE_URL'||name==='SQUARE_WEBHOOK_URL'||name==='RECOVERY_PUBLIC_URL'||name==='RECOVERY_TWILIO_WEBHOOK_URL'){const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password)throw Error('AI endpoint requires HTTPS');}
+   if(name==='RECOVERY_TWILIO_SID'&&!/^AC[a-fA-F0-9]{32}$/.test(value))throw Error('Twilio Account SID required');
+   if(name==='RECOVERY_TWILIO_FROM'&&!/^\+[1-9]\d{7,14}$/.test(value))throw Error('E.164 sender required');
    if(name==='RECOVERY_SMTP_HOST'&&!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(value))throw Error('SMTP hostname required');
    if(name==='RECOVERY_SMTP_PORT'&&!['465','587','2525'].includes(value))throw Error('Unsupported SMTP port');
    if(name==='RECOVERY_SMTP_FROM'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw Error('Sender email address required');
