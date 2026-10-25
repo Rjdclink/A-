@@ -5,6 +5,7 @@ import {dirname,resolve} from 'node:path';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {openDatabase,first,all,run,id,now,sha256,json,parse,register,passwordMatches,createSession,authenticated,publicUser,audit,enqueue,queryKnowledge,logEvent} from './core.mjs';
 import {addConnection,connectionHeaders} from './connections.mjs';
+import {providerProbe,validateProbe} from './integrations/providers.mjs';
 import {getCatalog,getAppDefinition,resolveAppHost} from './integrations/catalog.mjs';
 import {createBillingManager,BillingError} from './billing/manager.mjs';
 import {subscriptionEntitlements,enforceBilling} from './billing/entitlements.mjs';
@@ -229,8 +230,8 @@ export function createApp({dbPath=process.env.DB_PATH||'data/growthveyra.sqlite'
     if(!app?.probe_path)fail('This app lacks an automatic read-only verification endpoint',409);
     const url='https://'+c.host+app.probe_path;
     let auth;try{auth=connectionHeaders(db,user.tenant_id,c.id,url,env);}catch(e){fail(e.message,400);}
-    try{await (httpRequest||externalHttp)({url,method:'GET',allowedHosts:[c.host],headers:auth.headers});}
-    catch(e){console.error('Read-only provider check failed:',app.id,e?.name||'Error');fail('App declined or could not verify this token',502);}
+    try{const reply=await (httpRequest||externalHttp)({url,...providerProbe(app.id),allowedHosts:[c.host],headers:auth.headers});validateProbe(app.id,reply);}
+    catch(e){run(db,'UPDATE connections SET verified_at=NULL WHERE id=? AND tenant_id=?',c.id,user.tenant_id);console.error('Read-only provider check failed:',app.id,e?.name||'Error');fail('App declined or could not verify this token',502);}
     run(db,'UPDATE connections SET verified_at=? WHERE id=? AND tenant_id=?',now(),c.id,user.tenant_id);
     audit(db,user.tenant_id,user.id,'integration.verified',c.id,{provider:app.id});
     send(res,200,{id:c.id,provider_id:app.id,status:'verified'});return;

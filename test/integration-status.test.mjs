@@ -20,3 +20,19 @@ test('integration diagnostics distinguish configured providers from verified con
   for(const secret of ['test_sensitive_ai_key','test_sensitive_smtp_password','test_sensitive_square','test_sensitive_shopify'])assert.ok(!response.includes(secret));
  }finally{await app.close();db.close();}
 });
+
+test('unified runtime derives stable credential encryption without exposing key material',async()=>{
+ const {connectionHeaders}=await import('../integrations/automation/src/connections.mjs');
+ const {createHmac}=await import('node:crypto');
+ const db=new DatabaseSync(':memory:');
+ const env={AUTOMATION_DB_PATH:':memory:',AUTO_BACKUP_HOURS:'0',PSEUDONYM_KEY:'stable-private-pseudonym-key-for-tests'};
+ const app=createUnified({ledger:{db},env,autoStart:false});
+ try{
+  const saved=await app.handle('default','growth/integrations/connect','POST',{provider_id:'shopify',host:'test-store.myshopify.com',credential:'fixture-token'});
+  assert.equal(saved.status,201);
+  const derived=createHmac('sha256',env.PSEUDONYM_KEY).update('aplus:integration-credentials:v1').digest('hex');
+  const auth=connectionHeaders(app.growth.db,'aplus:default',saved.data.id,'https://test-store.myshopify.com/admin/api/2026-10/graphql.json',{INTEGRATION_MASTER_KEY:derived});
+  assert.equal(auth.headers['X-Shopify-Access-Token'],'fixture-token');
+  assert.doesNotMatch(JSON.stringify(saved),/fixture-token/);
+ }finally{await app.close();db.close();}
+});

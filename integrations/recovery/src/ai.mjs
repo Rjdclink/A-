@@ -1,12 +1,14 @@
-const url=process.env.AI_BASE_URL||'https://vireonix.ai/v1/chat/completions';
-export async function complete(system,user,{maxTokens=750}={}) {
+export async function complete(system,user,{maxTokens=750,env=process.env,fetcher=fetch}={}) {
+  const url=new URL(env.AI_BASE_URL||'https://vireonix.ai/v1/chat/completions');
+  if(url.protocol!=='https:'||url.username||url.password)throw Error('AI endpoint must use HTTPS without URL credentials');
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),Number(process.env.AI_TIMEOUT_MS)||55000);
+  const timeout=setTimeout(()=>controller.abort(),Math.min(60000,Math.max(1000,Number(env.AI_TIMEOUT_MS)||55000)));
   try {
-    const response=await fetch(url,{
+    const response=await fetcher(url,{
       method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify({model:process.env.AI_MODEL||'auto',temperature:0.25,max_tokens:maxTokens,messages:[{role:'system',content:system},{role:'user',content:user}]}),
+      headers:{'content-type':'application/json',...(env.AI_API_KEY?{authorization:'Bearer '+env.AI_API_KEY}:{})},
+      redirect:'error',
+      body:JSON.stringify({model:env.AI_MODEL||'auto',temperature:0.25,max_tokens:maxTokens,messages:[{role:'system',content:system},{role:'user',content:user}]}),
       signal:controller.signal
     });
     if(!response.ok) throw new Error('AI service HTTP '+response.status);
@@ -23,7 +25,7 @@ export function extractJson(text) {
   if(a<0||b<a) throw new Error('AI returned no JSON object');
   return JSON.parse(clean.slice(a,b+1));
 }
-export async function analyzeOpportunity(observation) {
+export async function analyzeOpportunity(observation,options={}) {
   const system='You are a rigorous B2B ecommerce conversion and lead-funnel auditor. Review ONLY supplied evidence from publicly accessible pages, and distinguish direct observed HTML from untested hypotheses. A deterministic multi-page audit with URLs, category, impact and confidence is provided; prioritize its evidence, including findings about product discoverability, accessible purchase buttons, forms, shipping, and contact policies. NEVER invent profits, cart abandonment, actual customer confusion, internal conversion metrics, page performance, analytics, security findings, or dollar losses. Never call a possible problem a verified failure unless the evidence is direct and sufficient. Revenue scenarios require explicit invented assumptions; prefer no numeric estimate where data is missing. Return a SINGLE compact valid JSON object: company_name, summary, confidence (low/medium/high), opportunities (array with finding,evidence,source_url,service,impact_scenario,assumptions), priority_score (0-100), priority_basis, email_subject, email_body. Evidence must name specific supplied page and exact observation. Outreach email must be specific, professional, and offer $299/month without implying proven losses, contact history or verified profit. Omit results unsupported by provided evidence.';
   const audit=observation.site_audit||null;
   const concise={
@@ -43,9 +45,10 @@ export async function analyzeOpportunity(observation) {
     public_contact_email_present:Boolean(observation.public_contact_emails?.length)
   };
   const input=JSON.stringify(concise).slice(0,13000);
-  let result;
-  try {result=extractJson(await complete(system,input,{maxTokens:2200}));}
+  let result,analysisMode='ai';
+  try {result=extractJson(await complete(system,input,{...options,maxTokens:2200}));if(!result||typeof result!=='object'||Array.isArray(result))throw Error('AI analysis must be an object');}
   catch(error){
+    analysisMode='deterministic_fallback';
     console.warn('AI structured analysis unavailable:',String(error.message).slice(0,140));
     const title=String(observation.title||observation.host||'Business');
     const body=String(observation.body_excerpt||'');
@@ -54,6 +57,8 @@ export async function analyzeOpportunity(observation) {
     if(!opportunities.length&&/contact|book|schedule|appointment|request|demo/i.test(body))opportunities.push({finding:'Evaluate inquiry and appointment response time',evidence:'Public website presents contact or scheduling calls to action',service:'Automated inquiry responses and appointment follow-up',impact_scenario:'Illustrative benefit only; no lost-revenue amount verified',assumptions:'Requires business inquiry data'});
     result={company_name:title,summary:'Preliminary public-website review; detailed AI response was unavailable',confidence:'low',opportunities,priority_score:25,priority_basis:'Public calls to action, not verified profitability',email_subject:'Potential conversion improvements for '+title,email_body:'Hello, we reviewed the publicly available customer journey on your website and identified possible areas for improving inquiry follow-up. Our AI Revenue Recovery service provides automated lead responses and follow-ups for $299 per month. These are opportunities for review, not verified lost purchases or revenue. Please let us know if you would like details.'};
   }
+  if(!result||typeof result!=='object'||Array.isArray(result))throw Error('AI analysis must be an object');
+  result.analysis_mode=analysisMode;
   if(!Array.isArray(result.opportunities))result.opportunities=[];
   result.opportunities=result.opportunities.slice(0,6).map(o=>({
     finding:String(o.finding||'').slice(0,400),evidence:String(o.evidence||'').slice(0,700),
@@ -78,6 +83,6 @@ export async function draftReply(thread,company) {
   const system='You write professional, concise B2B email replies for AI Revenue Recovery. Only use supplied email context, be transparent that opportunity estimates are scenarios rather than measured abandoned carts. Price is $299 per month paid manually by the Bad Blue Venmo business QR (@bad-blue). Never invent that a payment was received or claim access to private analytics. Respect stop/unsubscribe immediately. If the prospect asks about a call, offer a reply with scheduling availability rather than inventing calendar events. Do not make legal promises or guarantee revenue. Output only the email body, with no subject, no markdown.';
   return (await complete(system,JSON.stringify({thread,company}).slice(0,12000),{maxTokens:450})).slice(0,3000);
 }
-export async function draftLeadReply(lead,business) {
-  return (await complete('Respond to a prospective customer for a business using only its supplied service information and FAQ. Do not claim availability or prices unless supplied. Brief, polite, helpful; invite booking and clarify questions. Output body only.',JSON.stringify({lead:{name:lead.name,inquiry:lead.inquiry},business:{name:business.name,services:business.services,faq:business.faq}}),{maxTokens:350})).slice(0,2600);
+export async function draftLeadReply(lead,business,options={}) {
+  return (await complete('Respond to a prospective customer for a business using only its supplied service information and FAQ. Do not claim availability or prices unless supplied. Brief, polite, helpful; invite booking and clarify questions. Output body only.',JSON.stringify({lead:{name:lead.name,inquiry:lead.inquiry},business:{name:business.name,services:business.services,faq:business.faq}}),{...options,maxTokens:350})).slice(0,2600);
 }

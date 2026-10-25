@@ -18,7 +18,7 @@ const records = [
  ['constantcontact','Constant Contact','Marketing','api.cc.email','bearer'],
  ['sendgrid','SendGrid','Email','api.sendgrid.com','bearer','/v3/user/account'],
  ['mailgun','Mailgun','Email','api.mailgun.net','api_key'],
- ['postmark','Postmark','Email','api.postmarkapp.com','api_key'],
+ ['postmark','Postmark','Email','api.postmarkapp.com','api_key','/server'],
  ['resend','Resend','Email','api.resend.com','bearer'],
  ['slack','Slack','Collaboration','slack.com','bearer','/api/auth.test'],
  ['discord','Discord','Collaboration','discord.com','bearer'],
@@ -63,7 +63,7 @@ const records = [
  ['helpscout','Help Scout','Support','api.helpscout.net','bearer','/v2/users/me'],
  ['gorgias','Gorgias','Support','gorgias.com','api_key'],
  ['front','Front','Support','api2.frontapp.com','bearer','/me'],
- ['shopify','Shopify','Commerce','myshopify.com','bearer'],
+ ['shopify','Shopify','Commerce','myshopify.com','bearer','/admin/api/2026-10/graphql.json'],
  ['bigcommerce','BigCommerce','Commerce','api.bigcommerce.com','bearer'],
  ['woocommerce','WooCommerce','Commerce','woocommerce.com','api_key'],
  ['square','Square','Commerce','connect.squareup.com','bearer','/v2/locations'],
@@ -97,7 +97,7 @@ const records = [
  ['cohere','Cohere','Artificial Intelligence','api.cohere.com','bearer'],
  ['fireworks','Fireworks AI','Artificial Intelligence','api.fireworks.ai','bearer']
 ];
-const instanceHosts=new Set(['salesforce','freshsales','mailchimp','postmark','mailgun','supabase','snowflake','databricks','confluence','jira','zendesk','freshdesk','gorgias','shopify','woocommerce','quickbooks','bamboohr','workday','docusign']);
+const instanceHosts=new Set(['salesforce','freshsales','mailchimp','supabase','snowflake','databricks','confluence','jira','zendesk','freshdesk','gorgias','shopify','woocommerce','quickbooks','bamboohr','workday','docusign']);
 export const APP_CATALOG=Object.freeze(records.map(([id,name,category,hostname,auth_type,probe_path])=>Object.freeze({
  id,name,category,hostname,auth_type,status:'requires_credentials',requires_instance_host:instanceHosts.has(id),
  ...(probe_path?{probe_path}:{}),

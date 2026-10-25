@@ -40,7 +40,12 @@ test('Neon HTTP runtime provides real passwordless dashboard and durable lead da
 });
 test('commerce event triggers a durable GrowthVeyra run under the same Neon workspace',async()=>{
  const pool=new FakePool(),app=createNeonApp({pool,env:{AUTO_BACKUP_HOURS:'0'}});
- const call=async(path,method='GET',data)=>{const r=await app.fetch(req(path,method,data));return {status:r.status,data:await r.json()};};
+ await app.fetch(req('/health'));
+ const call=async(path,method='GET',data)=>{
+  const request=req(path,method,data);
+  request.headers.set('authorization','Bearer '+pool.values.get('default')[path==='/api/events'?'ingest_token':'admin_token']);
+  const r=await app.fetch(request);return {status:r.status,data:await r.json()};
+ };
  const spec={start:'compose',steps:[{id:'compose',type:'template',template:'Purchase {{input.source_event}}',next:'done'},{id:'done',type:'end'}]};
  const w=await call('/api/growth/workflows','POST',{name:'Purchase workflow',spec,enabled:true,trigger:{type:'manual'}});
  assert.equal(w.status,201);

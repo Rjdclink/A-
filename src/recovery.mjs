@@ -4,7 +4,7 @@ import {analyzeOpportunity,draftLeadReply} from '../integrations/recovery/src/ai
 import {allowRecurse} from '../integrations/recovery/src/workflows.mjs';
 function fail(message,status=400){const e=Error(message);e.status=status;throw e;}
 const email=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportunity,clock=()=>Date.now(),mail=null,onOpportunity=null}={}){
+export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportunity,clock=()=>Date.now(),mail=null,onOpportunity=null,env=process.env}={}){
  db.exec("CREATE TABLE IF NOT EXISTS growth_sites(workspace TEXT NOT NULL,id TEXT NOT NULL,website TEXT NOT NULL,title TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'pending',observation TEXT,analysis TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(workspace,id),UNIQUE(workspace,website));");
  db.exec("CREATE TABLE IF NOT EXISTS growth_leads(workspace TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,email TEXT NOT NULL,inquiry TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'new',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(workspace,id));");
  db.exec("CREATE TABLE IF NOT EXISTS growth_outreach(workspace TEXT NOT NULL,id TEXT NOT NULL,site_id TEXT NOT NULL,recipient TEXT NOT NULL,subject TEXT NOT NULL,body TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'draft',sent_at INTEGER,created_at INTEGER NOT NULL,PRIMARY KEY(workspace,id));");
@@ -23,7 +23,7 @@ export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportu
   run('UPDATE growth_sites SET status=?,updated_at=? WHERE workspace=? AND id=?','scanning',stamp,workspace,id);
   try{
    const observation=await inspect(url,{maxSupporting:4});
-   const analysis=await analyze(observation);
+   const analysis=await analyze(observation,{env});
    const updated=clock();
    const routine=one('SELECT discover_enabled FROM growth_routines WHERE workspace=?',workspace);
    if(routine?.discover_enabled){
@@ -73,7 +73,7 @@ export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportu
   const reply=path.match(/^leads\/([0-9a-f-]{36})\/reply$/i);
   if(reply&&method==='POST'){
    const lead=one('SELECT * FROM growth_leads WHERE workspace=? AND id=?',workspace,reply[1]);if(!lead)fail('Lead not found',404);
-   return {draft:await draftLeadReply(lead,{name:String(payload.business_name||workspace).slice(0,120),services:String(payload.services||'').slice(0,2000),faq:String(payload.faq||'').slice(0,2000)})};
+   return {draft:await draftLeadReply(lead,{name:String(payload.business_name||workspace).slice(0,120),services:String(payload.services||'').slice(0,2000),faq:String(payload.faq||'').slice(0,2000)},{env})};
   }
   if(path==='outreach'&&method==='GET')return {outreach:all('SELECT * FROM growth_outreach WHERE workspace=? ORDER BY created_at DESC LIMIT 100',workspace)};
   const sending=path.match(/^outreach\/([0-9a-f-]{36})\/send$/i);
@@ -82,8 +82,15 @@ export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportu
    if(row.status!=='draft')fail('Message already processed',409);
    if(payload.confirm!==true)fail('Explicit confirmation required');
    if(!mail)fail('Mail transport is not configured',503);
-   await mail({to:row.recipient,subject:row.subject,text:row.body});
-   run("UPDATE growth_outreach SET status='sent',sent_at=? WHERE workspace=? AND id=? AND status='draft'",clock(),workspace,row.id);
+   // Claim before awaiting SMTP so concurrent requests cannot send twice.
+   if(!run("UPDATE growth_outreach SET status='sending' WHERE workspace=? AND id=? AND status='draft'",workspace,row.id).changes)fail('Message already processed',409);
+   try{await mail({to:row.recipient,subject:row.subject,text:row.body,messageId:'<'+row.id+'@aplus.local>'});}
+   catch(e){
+    // A lost SMTP acknowledgement may follow acceptance; do not automatically resend.
+    run("UPDATE growth_outreach SET status='delivery_unknown' WHERE workspace=? AND id=?",workspace,row.id);
+    fail('Delivery could not be confirmed; check the mail provider before retrying',502);
+   }
+   run("UPDATE growth_outreach SET status='sent',sent_at=? WHERE workspace=? AND id=? AND status='sending'",clock(),workspace,row.id);
    return {sent:true,id:row.id};
   }
   if(path==='routines'&&method==='GET')return {routine:one('SELECT * FROM growth_routines WHERE workspace=?',workspace)||{workspace,enabled:0,interval_hours:24,discover_enabled:0}};

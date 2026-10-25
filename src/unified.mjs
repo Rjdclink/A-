@@ -1,3 +1,4 @@
+import {createHmac} from 'node:crypto';
 import {createApp} from '../integrations/automation/src/server.mjs';
 import {createSession,first,run,now} from '../integrations/automation/src/core.mjs';
 import {createRecovery} from './recovery.mjs';
@@ -6,7 +7,7 @@ import {createNeonIntegration} from './neon.mjs';
 
 function mailer(env){
  if(!env.RECOVERY_SMTP_HOST||!env.RECOVERY_SMTP_USER||!env.RECOVERY_SMTP_PASS||!env.RECOVERY_SMTP_FROM)return null;
- return async({to,subject,text})=>{
+ return async({to,subject,text,messageId})=>{
   const {default:nodemailer}=await import('nodemailer');
   const transport=nodemailer.createTransport({
    host:env.RECOVERY_SMTP_HOST,port:Number(env.RECOVERY_SMTP_PORT||587),
@@ -14,15 +15,17 @@ function mailer(env){
    auth:{user:env.RECOVERY_SMTP_USER,pass:env.RECOVERY_SMTP_PASS},
    connectionTimeout:15000,socketTimeout:20000
   });
-  try{await transport.sendMail({from:env.RECOVERY_SMTP_FROM,to,subject,text});}
+  try{await transport.sendMail({from:env.RECOVERY_SMTP_FROM,to,subject,text,messageId});}
   finally{transport.close();}
  };
 }
 export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOMATION_DB_PATH||(env.DB_PATH?env.DB_PATH+'.automation.sqlite':'data/a-plus.automation.sqlite'),autoStart=true,neonIntegration=null}){
+ // Stable domain-separated key keeps saved credentials usable across restarts.
+ if(!env.INTEGRATION_MASTER_KEY&&typeof env.PSEUDONYM_KEY==='string'&&env.PSEUDONYM_KEY.length>=24)env={...env,INTEGRATION_MASTER_KEY:createHmac('sha256',env.PSEUDONYM_KEY).update('aplus:integration-credentials:v1').digest('hex')};
  const growth=createApp({dbPath:automationDbPath,env:{...env,ALLOW_SIGNUP:'false'},autoStart});
  const orchestration=createOrchestration(ledger.db,growth.db);
  const neon=neonIntegration||createNeonIntegration({env});
- const recovery=createRecovery(ledger.db,{mail:mailer(env),onOpportunity:async(workspace,site)=>{
+ const recovery=createRecovery(ledger.db,{env,mail:mailer(env),onOpportunity:async(workspace,site)=>{
   const evidence={opportunity:{website:site.website,summary:site.analysis?.summary||'',score:site.analysis?.priority_score??null}};
   await orchestration.emit(workspace,'recovery.analysis',evidence);
   await neon.record(workspace,'recovery.analysis','recovery:'+site.id+':'+site.updated_at,evidence.opportunity);

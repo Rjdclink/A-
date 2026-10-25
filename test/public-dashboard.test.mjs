@@ -33,7 +33,7 @@ test('live public dashboard opens without credentials and serves actual operatio
   const forbidden=await fetch(base+'/api/recovery/leads?workspace=other');
   assert.equal(forbidden.status,403);
   const disallowed=await fetch(base+'/api/growth/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
-  assert.equal(disallowed.status,404);
+  assert.equal(disallowed.status,401);
  }finally{
   await new Promise(done=>server.close(done));await unified.close();ledger.close();
  }

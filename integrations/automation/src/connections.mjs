@@ -1,5 +1,6 @@
 import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import {first,run,id,now} from './core.mjs';
+import {providerHeaders} from './integrations/providers.mjs';
 
 const HOST=/^(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,5 +43,7 @@ export function connectionHeaders(db,tenant,connectionId,url,env){
  if(!info)throw Error('Connection not found');
  if(new URL(url).hostname.toLowerCase()!==info.host)throw Error('Credential host does not match integration');
  const value=open(info.secret_cipher,tenant,info.id,info.host,env);
- return {headers:info.auth_type==='bearer'?{authorization:'Bearer '+value}:{'x-api-key':value},secret:value};
+ const target=new URL(url);
+ if(target.protocol!=='https:'||target.username||target.password||target.port&&target.port!=='443')throw Error('Credential transport requires HTTPS');
+ return {headers:providerHeaders(info.provider_id,value,info.auth_type),secret:value};
 }
