@@ -20,7 +20,7 @@ export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportu
   const existing=one('SELECT * FROM growth_sites WHERE workspace=? AND website=?',workspace,url);
   const id=existing?.id||randomUUID(),stamp=clock();
   if(!existing)run('INSERT INTO growth_sites(workspace,id,website,created_at,updated_at) VALUES(?,?,?,?,?)',workspace,id,url,stamp,stamp);
-  run('UPDATE growth_sites SET status=?,updated_at=? WHERE workspace=? AND id=?','scanning',stamp,workspace,id);
+  if(!run("UPDATE growth_sites SET status='scanning',updated_at=? WHERE workspace=? AND id=? AND (status!='scanning' OR updated_at<?)",stamp,workspace,id,stamp-15*60000).changes)fail('This website is already being scanned',409);
   try{
    const observation=await inspect(url,{maxSupporting:4});
    const analysis=await analyze(observation,{env});
@@ -81,7 +81,7 @@ export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportu
    const row=one('SELECT * FROM growth_outreach WHERE workspace=? AND id=?',workspace,sending[1]);if(!row)fail('Draft not found',404);
    if(row.status!=='draft')fail('Message already processed',409);
    if(payload.confirm!==true)fail('Explicit confirmation required');
-   if(!mail)fail('Mail transport is not configured',503);
+   if(!mail||mail.configured?.()===false)fail('Mail transport is not configured',503);
    // Claim before awaiting SMTP so concurrent requests cannot send twice.
    if(!run("UPDATE growth_outreach SET status='sending' WHERE workspace=? AND id=? AND status='draft'",workspace,row.id).changes)fail('Message already processed',409);
    try{await mail({to:row.recipient,subject:row.subject,text:row.body,messageId:'<'+row.id+'@aplus.local>'});}
@@ -108,7 +108,7 @@ export function createRecovery(db,{inspect=inspectWebsite,analyze=analyzeOpportu
    let count=0;
    for(const r of all('SELECT * FROM growth_routines WHERE enabled=1 AND next_run_at<=? LIMIT 3',clock())){
     run('UPDATE growth_routines SET next_run_at=? WHERE workspace=?',clock()+r.interval_hours*3600000,r.workspace);
-    const s=one("SELECT website FROM growth_sites WHERE workspace=? AND status!='scanning' ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,updated_at ASC LIMIT 1",r.workspace);
+    const s=one("SELECT website FROM growth_sites WHERE workspace=? AND (status!='scanning' OR updated_at<?) ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,updated_at ASC LIMIT 1",r.workspace,clock()-15*60000);
     if(s){try{await scan(r.workspace,s.website);count++;}catch(e){console.warn('Recovery scan failed:',String(e.message).slice(0,130));}}
    }
    return count;

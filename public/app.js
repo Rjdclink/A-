@@ -130,16 +130,17 @@ $('addKnowledge').addEventListener('click',async()=>{try{await api('/api/growth/
 async function loadApps(){
  const [apps,connections]=await Promise.all([api('/api/growth/integrations/catalog?search='+encodeURIComponent($('appSearch').value)),api('/api/growth/connections')]);
  $('appCatalog').replaceChildren();if(!apps.length)blank('appCatalog','No integrations match your search.');
- for(const app of apps.slice(0,16)){
+ for(const app of apps){
   const disclosure=node('details');disclosure.append(node('summary','Set up '+app.name));
-  const input=node('input',undefined,'field');input.type='password';input.autocomplete='off';input.placeholder='Provider-issued API token';
-  disclosure.append(input);let host;
+  const inputs={};
+  for(const f of app.fields||[{key:'token',label:'Provider API token',secret:true}]){const label=node('label',f.label),input=node('input',undefined,'field');input.type=f.secret?'password':'text';input.autocomplete='off';label.append(input);disclosure.append(label);inputs[f.key]=input;}
+  let host;
   if(app.requires_instance_host){host=node('input',undefined,'field');host.placeholder='Your instance hostname';disclosure.append(host);}
-  disclosure.append(btn('Connect',async()=>{try{await api('/api/growth/integrations/connect','POST',{provider_id:app.id,credential:input.value,...(host?{host:host.value}:{})});input.value='';await loadApps();}catch(e){notice(e);}},'primary'));
+  disclosure.append(btn('Connect',async()=>{try{await api('/api/growth/integrations/connect','POST',{provider_id:app.id,credentials:Object.fromEntries(Object.entries(inputs).map(([k,input])=>[k,input.value])),...(host?{host:host.value}:{})});for(const input of Object.values(inputs))input.value='';await loadApps();}catch(e){notice(e);}},'primary'));
   $('appCatalog').append(line(app.name,app.category+' · Requires configuration',[disclosure]));
  }
  $('connectedApps').replaceChildren();if(!connections.length)blank('connectedApps','No connected services.');
- for(const c of connections)$('connectedApps').append(line(c.name,c.host+' · '+c.status,[btn('Verify',async()=>{try{await api('/api/growth/integrations/'+c.id+'/test','POST',{});await loadApps();}catch(e){notice(e);}}),btn('Disconnect',async()=>{if(!confirm('Disconnect '+c.name+'?'))return;try{await api('/api/growth/connections/'+c.id,'DELETE');await loadApps();}catch(e){notice(e);}})]));
+ for(const c of connections)$('connectedApps').append(line(c.name,c.host+' · '+c.status,[btn('Update credentials',async()=>{const app=apps.find(a=>a.id===c.provider_id)|| (await api('/api/growth/integrations/catalog')).find(a=>a.id===c.provider_id);if(!app)return;const form=node('div');const values={};for(const f of app.fields){const label=node('label',f.label),input=node('input',undefined,'field');input.type=f.secret?'password':'text';input.autocomplete='off';label.append(input);form.append(label);values[f.key]=input;}form.append(btn('Save credentials',async()=>{try{await api('/api/growth/connections/'+c.id,'PATCH',{credentials:Object.fromEntries(Object.entries(values).map(([k,v])=>[k,v.value]))});await loadApps();}catch(e){notice(e);}},'primary'));$('connectedApps').prepend(form);}),btn('Use in workflow',async()=>{try{const out=await api('/api/growth/integrations/'+c.id+'/workflow','POST',{});show('studio');alert('Created '+out.name+'. Open it in Workflow Studio to choose the data or action you need.');}catch(e){notice(e);}}),btn('Verify',async()=>{try{await api('/api/growth/integrations/'+c.id+'/test','POST',{});await loadApps();}catch(e){notice(e);}}),btn('Disconnect',async()=>{if(!confirm('Disconnect '+c.name+'?'))return;try{await api('/api/growth/connections/'+c.id,'DELETE');await loadApps();}catch(e){notice(e);}})]));
 }
 $('appSearch').addEventListener('change',()=>{if(S.connected)loadApps().catch(notice);});
 async function loadActivity(){
@@ -150,6 +151,9 @@ async function loadActivity(){
 }
 $('refreshActivity').addEventListener('click',()=>loadActivity().catch(notice));
 async function loadSettings(){
+ const configuration=await api('/api/integrations/settings');
+ $('serviceSettings').replaceChildren();
+ for(const field of configuration.fields){const label=node('label',field.label),input=node('input',undefined,'field');input.type=field.secret?'password':'text';input.autocomplete='off';input.dataset.setting=field.name;input.value=field.value;input.placeholder=field.secret&&field.configured?'Saved · leave blank to keep':'';label.append(input);$('serviceSettings').append(label);}
  const [billing,neon]=await Promise.allSettled([api('/api/growth/billing'),api('/api/neon/status')]);
  txt('billingState',billing.status==='fulfilled'?JSON.stringify(billing.value):billing.reason.message);
  if(neon.status==='rejected')txt('neonStatus',neon.reason.message);
@@ -291,3 +295,5 @@ $('billingCancel').addEventListener('click',async()=>{
   txt('billingActionStatus','Subscription cancellation status: '+result.status);
  }catch(e){txt('billingActionStatus',e.message);}
 });
+
+$('saveServices').addEventListener('click',async()=>{try{const values={};for(const input of document.querySelectorAll('[data-setting]'))if(input.value)values[input.dataset.setting]=input.value;await api('/api/integrations/settings','POST',{values});txt('serviceSettingsStatus','Saved. Connected features use these settings immediately.');await loadSettings();}catch(e){txt('serviceSettingsStatus',e.message);}});

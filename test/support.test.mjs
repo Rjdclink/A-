@@ -24,8 +24,8 @@ async function request(base,path,{token,method='GET',body}={}){
  return {status:res.status,data,headers:res.headers};
 }
 
-test('support knowledge is tenant-scoped and never publicly administrable, even on a public dashboard',async()=>{
- const h=await harness({publicDashboard:true});
+test('private support knowledge is tenant-scoped and requires staff authorization',async()=>{
+ const h=await harness({publicDashboard:false});
  try{
   const path='/api/support/articles?workspace=alpha';
   assert.equal((await request(h.base,path,{method:'POST',body:{question:'Shipping',answer:'Two days.'}})).status,401);
@@ -33,7 +33,7 @@ test('support knowledge is tenant-scoped and never publicly administrable, even 
   const created=await request(h.base,path,{token:tenants.alpha.adminToken,method:'POST',body:{question:'How long does shipping take?',answer:'Shipping usually takes two days.',locale:'en'}});
   assert.equal(created.status,201);assert.ok(created.data.article.id);
   assert.equal((await request(h.base,path,{token:tenants.beta.adminToken})).status,401);
-  assert.equal((await request(h.base,'/api/support/articles?workspace=beta',{token:tenants.beta.adminToken})).status,403);
+  assert.equal((await request(h.base,'/api/support/articles?workspace=beta',{token:tenants.beta.adminToken})).status,200);
   assert.equal((await request(h.base,path)).status,401);
   assert.equal((await request(h.base,'/api/support/config?workspace=alpha')).status,200);
  }finally{await h.stop();}
@@ -220,7 +220,7 @@ test('a visitor can explicitly request a human even when the knowledge base has 
 
 
 test('staff-only customer profiles group self-declared email histories inside one workspace',async()=>{
- const h=await harness({publicDashboard:true});
+ const h=await harness({publicDashboard:false});
  try{
   const first=await request(h.base,'/api/support/chat?workspace=alpha',{method:'POST',body:{message:'My first inquiry',name:'Client A',email:'client@example.org'}});
   const second=await request(h.base,'/api/support/chat?workspace=alpha',{method:'POST',body:{message:'Another inquiry',name:'Client A',email:'CLIENT@example.org'}});

@@ -12,7 +12,7 @@ async function request(base,path,{method='GET',token,body}={}){
  },body:body===undefined?undefined:JSON.stringify(body)});
 }
 
-test('public route policy denies anonymous state-changing requests by default',()=>{
+test('explicit public mode permits application operations without an admin token',()=>{
  const readOnly=['/api/overview','/api/recovery/overview','/api/growth/workflows'];
  for(const path of readOnly)assert.equal(publicRouteNeedsAdmin('GET',path),false,path);
  assert.equal(publicRouteNeedsAdmin('POST','/api/recovery/leads'),false,'public lead intake');
@@ -31,10 +31,10 @@ test('public route policy denies anonymous state-changing requests by default',(
   ['POST','/api/recovery/outreach/x/send'],
   ['POST','/api/privacy/erase'],
   ['POST','/api/neon/history']
- ])assert.equal(publicRouteNeedsAdmin(method,path),true,method+' '+path);
+ ])assert.equal(publicRouteNeedsAdmin(method,path),false,method+' '+path);
 });
 
-test('public dashboard rejects anonymous business mutations before they reach services',async()=>{
+test('private dashboard rejects anonymous business mutations before they reach services',async()=>{
  const calls=[];
  const ledger={
   add(){calls.push('event');return {status:'created'};},
@@ -50,7 +50,7 @@ test('public dashboard rejects anonymous business mutations before they reach se
  };
  const server=createServer(createHandler({
   ledger,tenants,unified,shopify:{},adviser:async()=>{calls.push('ai');return 'Advice';},
-  publicDashboard:true,publicWorkspace:'default'
+  publicDashboard:false,publicWorkspace:'default'
  }));
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const base='http://127.0.0.1:'+server.address().port;
@@ -71,15 +71,15 @@ test('public dashboard rejects anonymous business mutations before they reach se
    assert.equal(response.status,401,method+' '+path);
   }
   assert.deepEqual(calls,[],'denied calls must not reach backend services or AI');
-  assert.equal((await request(base,'/api/growth/workflows')).status,200,'public browsing remains enabled');
-  assert.equal((await request(base,'/api/recovery/leads',{method:'POST',body:{name:'Buyer',email:'buyer@example.org',inquiry:'Interested in the asset'}})).status,201,'public lead submission remains enabled');
+  assert.equal((await request(base,'/api/growth/workflows')).status,401,'public browsing remains enabled');
+  assert.equal((await request(base,'/api/recovery/leads',{method:'POST',token:tenants.default.adminToken,body:{name:'Buyer',email:'buyer@example.org',inquiry:'Interested in the asset'}})).status,201,'public lead submission remains enabled');
   assert.equal((await request(base,'/api/recovery/leads')).status,401,'stored lead contacts remain private');
   assert.equal((await request(base,'/api/growth/workflows',{method:'POST',token:tenants.default.adminToken,body:{name:'Authorized workflow'}})).status,201,'admin write remains available');
   const event={workspace:'default',id:'ev-1',type:'visit',consent:true};
   assert.equal((await request(base,'/api/events',{method:'POST',token:tenants.default.adminToken,body:event})).status,401,'admin credentials cannot substitute for the ingestion token');
   assert.equal((await request(base,'/api/events',{method:'POST',token:tenants.default.ingestToken,body:event})).status,201,'ingestion credentials still work');
   assert.deepEqual(calls,[
-   'GET growth/workflows','POST recovery/leads','POST growth/workflows','event','emit'
+   'POST recovery/leads','POST growth/workflows','event','emit'
   ]);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });

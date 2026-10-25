@@ -1,6 +1,7 @@
 import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
 import {first,run,id,now} from './core.mjs';
-import {providerHeaders} from './integrations/providers.mjs';
+import {credentialValues} from './integrations/profiles.mjs';
+import {providerHeaders,providerURL} from './integrations/providers.mjs';
 
 const HOST=/^(?!-)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -15,7 +16,7 @@ export function validateConnection(input){
  if(typeof name!=='string'||name.trim().length<2||name.length>100)throw Error('Connection name must be 2-100 characters');
  if(typeof host!=='string'||host.length>253||!HOST.test(host)||host.includes('..'))throw Error('Connection requires a public API hostname');
  if(!['bearer','api_key'].includes(auth_type))throw Error('Choose bearer or API key authorization');
- if(typeof secret!=='string'||!secret.trim()||secret.length>4096||/[\r\n\0]/.test(secret))throw Error('Invalid API credential');
+ if(typeof secret!=='string'||!secret.trim()||secret.length>20000||/[\r\n\0]/.test(secret))throw Error('Invalid API credential');
  return {name:name.trim(),host:host.toLowerCase(),auth_type,secret};
 }
 function seal(secret,tenant,connection,host,env){
@@ -41,9 +42,18 @@ export function connectionHeaders(db,tenant,connectionId,url,env){
  if(typeof connectionId!=='string'||!UUID.test(connectionId))throw Error('Invalid connection reference');
  const info=first(db,'SELECT * FROM connections WHERE id=? AND tenant_id=?',connectionId,tenant);
  if(!info)throw Error('Connection not found');
- if(new URL(url).hostname.toLowerCase()!==info.host)throw Error('Credential host does not match integration');
  const value=open(info.secret_cipher,tenant,info.id,info.host,env);
- const target=new URL(url);
+ const resolved=providerURL(info.provider_id,url,value);
+ const target=new URL(resolved);
+ if(target.hostname.toLowerCase()!==info.host)throw Error('Credential host does not match integration');
  if(target.protocol!=='https:'||target.username||target.password||target.port&&target.port!=='443')throw Error('Credential transport requires HTTPS');
- return {headers:providerHeaders(info.provider_id,value,info.auth_type),secret:value};
+ return {headers:providerHeaders(info.provider_id,value,info.auth_type),url:resolved,secrets:Object.values(credentialValues(value)),secret:value};
+}
+
+export function replaceConnectionSecret(db,tenant,connectionId,secret,env){
+ const info=first(db,'SELECT * FROM connections WHERE id=? AND tenant_id=?',connectionId,tenant);
+ if(!info)throw Error('Connection not found');
+ validateConnection({...info,secret});
+ run(db,'UPDATE connections SET secret_cipher=?,verified_at=NULL WHERE id=? AND tenant_id=?',seal(secret,tenant,connectionId,info.host,env),connectionId,tenant);
+ return {id:connectionId,status:'configured'};
 }

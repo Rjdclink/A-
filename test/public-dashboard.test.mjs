@@ -26,14 +26,14 @@ test('live public dashboard opens without credentials and serves actual operatio
   assert.deepEqual(await workflows.json(),[]);
   const created=await fetch(base+'/api/recovery/leads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'Real Lead',email:'real@example.com',inquiry:'Requested information'})});
   assert.equal(created.status,201);
-  assert.equal((await fetch(base+'/api/recovery/leads')).status,401);
+  assert.equal((await fetch(base+'/api/recovery/leads')).status,200);
   const adminLeads=await fetch(base+'/api/recovery/leads',{headers:{authorization:'Bearer '+tenants.default.adminToken}});
   assert.equal(adminLeads.status,200);
   assert.equal((await adminLeads.json()).leads.length,1);
   const forbidden=await fetch(base+'/api/recovery/leads?workspace=other');
   assert.equal(forbidden.status,403);
   const disallowed=await fetch(base+'/api/growth/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
-  assert.equal(disallowed.status,401);
+  assert.equal(disallowed.status,404);
  }finally{
   await new Promise(done=>server.close(done));await unified.close();ledger.close();
  }

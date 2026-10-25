@@ -45,9 +45,9 @@ function configureShopify(options){
 export function createHandler({ledger,tenants,adviser,shopify,unified,support=null,embedOrigins=process.env.SUPPORT_EMBED_ORIGINS_JSON||'',publicDashboard=false,publicWorkspace='default'}={}){
  if(!ledger||!tenants||!adviser)throw Error('Missing server dependencies');
  if(publicDashboard&&(!Object.hasOwn(tenants,publicWorkspace)||validateWorkspace(publicWorkspace)!==publicWorkspace))throw Error('Public workspace is not configured');
- const shop=configureShopify(shopify);
- const supportService=support||(ledger.db?createSupport(ledger.db,{responder:createSupportResponder(),onEvent:unified?.emit}):null);
- const supportFrames=supportFrameOrigins(embedOrigins);
+ let shop=configureShopify(shopify);
+ const supportService=support||(ledger.db?createSupport(ledger.db,{responder:createSupportResponder(unified?.env||process.env),onEvent:unified?.emit}):null);
+ let supportFrames=supportFrameOrigins(embedOrigins);
  const supportRequests=createLimiter({max:12,windowMs:60000,maxKeys:3000});
  const staffLogins=createLimiter({max:6,windowMs:60000,maxKeys:3000});
  const requests=createLimiter({max:150,windowMs:60000,maxKeys:3000});
@@ -61,6 +61,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
     ledger.db.prepare('SELECT 1').get();return response(res,200,{status:'ok'});
    }
    if(req.method==='GET'&&url.pathname==='/api/dashboard-config')return response(res,200,{public:Boolean(publicDashboard),workspace:publicDashboard?publicWorkspace:null});
+   if(unified?.env?.SUPPORT_EMBED_ORIGINS_JSON)supportFrames=supportFrameOrigins(unified.env.SUPPORT_EMBED_ORIGINS_JSON);
    if(req.method==='GET'&&['/support','/support-admin','/support.js','/support-admin.js','/support.css'].includes(url.pathname)){
     if(url.pathname==='/support'){
      const workspace=requiredWorkspace(url);
@@ -140,6 +141,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
     res.writeHead(200,{...securityHeaders,'content-type':allowed[filename]+'; charset=utf-8'});res.end(file);return;
    }
    if(req.method==='POST'&&url.pathname==='/webhooks/shopify'){
+    if(unified?.env)shop=configureShopify({secret:unified.env.SHOPIFY_SECRET,shops:JSON.parse(unified.env.SHOPIFY_SHOPS_JSON||'{}'),allowOrders:unified.env.SHOPIFY_ANALYTICS_BASIS_ACKNOWLEDGED==='true'});
     if(!shop.secret||shop.secret.length<24)return response(res,404,{error:'Not configured'});
     const raw=await bytes(req,1024*1024);
     if(!verifyShopify(raw,req.headers['x-shopify-hmac-sha256'],shop.secret))return response(res,401,{error:'Invalid webhook signature'});
@@ -191,7 +193,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    const supportPublicGet=new Set(['/api/support/config','/api/support/calendar/slots']);
    const supportPublicPost=new Set(['/api/support/chat','/api/support/thread','/api/support/rating','/api/support/appointments','/api/support/handoff','/api/support/team/login','/api/support/calendar/book','/api/support/calendar/cancel','/api/support/calendar/my','/api/support/files','/api/support/files/read','/api/support/files/list','/api/support/privacy/self/export','/api/support/privacy/self/erase']);
    const publicSupport=isSupport&&((req.method==='GET'&&supportPublicGet.has(url.pathname))||(req.method==='POST'&&supportPublicPost.has(url.pathname)));
-   const owner=bearerFor(req,tenants,w,'adminToken');
+   const owner=publicDashboard&&w===publicWorkspace||bearerFor(req,tenants,w,'adminToken');
    if(isSupport){
     if(!supportService)return response(res,503,{error:'Support unavailable'});
     if(!publicSupport&&!owner){
@@ -323,7 +325,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
      }catch{return [name,null];}
     }));
     const data=Object.fromEntries(results);
-    data.privacy=publicDashboard&&!bearerFor(req,tenants,w,'adminToken')?{requests:[],restricted:true}:{requests:ledger.pendingPrivacyRequests(w)};
+    data.privacy={requests:ledger.pendingPrivacyRequests(w)};
     return response(res,200,data);
    }
    if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/')||url.pathname.startsWith('/api/integrations/'))){
@@ -349,7 +351,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    if(req.method==='POST'&&url.pathname==='/api/advice'){
     if(!aiRequests(peer+':'+w))return response(res,429,{error:'AI request limit reached'});
     const input=await parseJSON(req);const metrics=ledger.overview(w);
-    const advice=await adviser({metrics,objective:input.objective});return response(res,200,{advice,metrics});
+    const advice=await (unified?.adviser||adviser)({metrics,objective:input.objective});return response(res,200,{advice,metrics});
    }
    if(req.method==='POST'&&url.pathname==='/api/experiments'){
     const input=await parseJSON(req);return response(res,201,{status:ledger.createExperiment(w,input.id)});

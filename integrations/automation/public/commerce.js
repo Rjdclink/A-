@@ -31,7 +31,7 @@ function renderCatalog(){
  const query=$('#app-catalog-search').value.trim().toLowerCase();
  const found=state.catalog.filter(item=>(item.name+' '+item.id+' '+item.category).toLowerCase().includes(query));
  const region=$('#catalog-results');region.replaceChildren();
- for(const app of found.slice(0,query?16:12))region.append(appCard(app));
+ for(const app of found)region.append(appCard(app));
  if(!found.length)region.append(create('p','commerce-message','No matching apps.'));
  $('#catalog-count').textContent=state.catalog.length+' setup profiles';
 }
@@ -70,7 +70,9 @@ function selectApp(id){
  $('#catalog-host-wrapper').classList.toggle('hidden',!app.requires_instance_host);
  $('#catalog-connect-host').required=Boolean(app.requires_instance_host);
  $('#catalog-connect-host').value='';
- $('#catalog-connect-secret').value='';
+ $('#catalog-connect-secret').value='';$('#catalog-connect-secret').required=false;$('#catalog-connect-secret').parentElement.classList.add('hidden');
+ let fields=$('#provider-fields');if(!fields){fields=create('div');fields.id='provider-fields';$('#catalog-connect-form').append(fields);}fields.replaceChildren();
+ for(const f of app.fields){const label=create('label','field',f.label),input=create('input');input.type=f.secret?'password':'text';input.required=true;input.autocomplete='off';input.dataset.providerField=f.key;label.append(input);fields.append(label);}
  pane.classList.remove('hidden');
  pane.scrollIntoView({behavior:'smooth',block:'nearest'});
  $('#catalog-connect-secret').focus();
@@ -84,7 +86,7 @@ $('#catalog-connect-form').addEventListener('submit',async e=>{
  e.preventDefault();if(!state.selected)return;
  const submit=e.target.querySelector('[type=submit]');submit.disabled=true;
  try{
-  const payload={provider_id:state.selected.id,credential:$('#catalog-connect-secret').value};
+  const payload={provider_id:state.selected.id,credentials:Object.fromEntries([...document.querySelectorAll('[data-provider-field]')].map(x=>[x.dataset.providerField,x.value]))};
   if(state.selected.requires_instance_host)payload.host=$('#catalog-connect-host').value.trim();
   await request('/api/integrations/connect','POST',payload);
   $('#catalog-connect-form').reset();$('#catalog-connect-pane').classList.add('hidden');

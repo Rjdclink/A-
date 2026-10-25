@@ -410,4 +410,5 @@
   document.querySelectorAll('[data-section]').forEach(x=>x.classList.toggle('active',x===tab));
   document.querySelectorAll('.section').forEach(x=>x.classList.toggle('hidden',x.id!=='section-'+section));
  }));
+ fetch('/api/dashboard-config').then(r=>r.json()).then(async config=>{if(config.public){state.workspace=config.workspace;state.role='owner';await refresh();connectReady();id('logoutButton').classList.add('hidden');}}).catch(e=>feedback(e.message));
 })();

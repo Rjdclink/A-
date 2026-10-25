@@ -10,6 +10,7 @@ const assetNames=['index.html','dashboard.css','designer.css','designer.js','com
 const assets={
  aplusHtml:readFileSync(join(root,'public/index.html'),'utf8'),
  aplusJs:readFileSync(join(root,'public/app.js'),'utf8'),
+ supportFiles:Object.fromEntries(['support.html','support-admin.html','support.js','support-admin.js','support.css'].map(n=>[n,readFileSync(join(root,'public',n),'utf8')])),
  automationFiles:Object.fromEntries(assetNames.map(n=>[n,readFileSync(join(root,'integrations/automation/public',n),'utf8')]))
 };
 writeFileSync(join(stage,'functions/aplus/assets.generated.mjs'),'export const assets='+JSON.stringify(assets)+';\n');
@@ -22,6 +23,7 @@ text="import {assets as functionAssets} from '../functions/aplus/assets.generate
 replace("let output=await readFile(new URL(file,import.meta.url));","let output=Buffer.from(isScript?functionAssets.aplusJs:functionAssets.aplusHtml);");
 replace("let html=await readFile(new URL('../integrations/automation/public/index.html',import.meta.url),'utf8');","let html=functionAssets.automationFiles['index.html'];");
 replace("const file=await readFile(new URL('../integrations/automation/public/'+filename,import.meta.url));","const file=Buffer.from(functionAssets.automationFiles[filename]);");
+replace("const asset=await readFile(new URL('../public/'+path,import.meta.url));","const asset=Buffer.from(functionAssets.supportFiles[path]);");
 writeFileSync(join(stage,'src/api.mjs'),text);
 const file=join(stage,'integrations/automation/src/server.mjs');
 let automation=readFileSync(file,'utf8'),n=0;

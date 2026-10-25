@@ -23,11 +23,11 @@ export function checkAllowedHost(address,hosts){
 }
 export async function externalHttp({url,method='GET',body='',allowedHosts=[],headers={}}){
  const target=checkAllowedHost(url,allowedHosts);
- const records=await dnsLookup(target.hostname,{all:true,verbatim:true});
+ const records=await dnsLookup(target.hostname,{all:true,verbatim:true,family:4});
  if(!records.length||records.some(r=>r.family!==4||!globalIPv4(r.address)))throw Error('Integration hostname does not resolve solely to public IPv4 addresses');
  const address=records[0].address;
  return new Promise((resolve,reject)=>{
-  const req=https.request(target,{method,lookup:(_host,_opts,cb)=>cb(null,address,4),timeout:15000,headers:{'user-agent':'GrowthVeyraAI/0.1','accept':'application/json,text/plain','content-type':'application/json',...(method==='POST'?{'idempotency-key':body.idempotencyKey||''}:{}),...headers}},res=>{
+  const req=https.request(target,{method,lookup:(_host,opts,cb)=>opts.all?cb(null,[{address,family:4}]):cb(null,address,4),timeout:15000,headers:{'user-agent':'GrowthVeyraAI/0.1','accept':'application/json,text/plain','content-type':'application/json',...(method==='POST'?{'idempotency-key':body.idempotencyKey||''}:{}),...headers}},res=>{
     if(res.statusCode>=300&&res.statusCode<400){res.resume();reject(Error('Redirects are disabled for integrations'));return;}
     let chunks=[],size=0;res.on('data',part=>{size+=part.length;if(size>131072){req.destroy(Error('Integration response exceeded size limit'));return;}chunks.push(part);});
     res.on('end',()=>{const text=Buffer.concat(chunks).toString('utf8');if(res.statusCode>=400){reject(Error('Integration HTTP '+res.statusCode));return;}resolve(text.slice(0,10000));});
@@ -177,9 +177,9 @@ export async function execute(db,execution,{env=process.env,aiFetch=fetch,httpRe
     }
     let auth={headers:{},secret:''};
     if(step.connection_id)auth=connectionHeaders(db,execution.tenant_id,step.connection_id,url,env);
-    result=await httpRequest({url,method:step.type==='http_post'?'POST':'GET',body:{payload:body,idempotencyKey:execution.id+':'+step.id},allowedHosts,headers:auth.headers});
+    result=await httpRequest({url:auth.url||url,method:step.type==='http_post'?'POST':'GET',body:{payload:body,idempotencyKey:execution.id+':'+step.id},allowedHosts,headers:auth.headers});
     // Never persist a credential even if an upstream service echoes it.
-    if(auth.secret&&typeof result==='string')result=result.replaceAll(auth.secret,'[redacted]');
+    if(typeof result==='string')for(const secret of [auth.secret,...(auth.secrets||[]),...Object.values(auth.headers||{})].filter(Boolean))result=result.replaceAll(secret,'[redacted]');
     if(step.type==='http_post')run(db,'INSERT OR IGNORE INTO action_receipts(run_id,step_id,response,created_at) VALUES (?,?,?,?)',execution.id,step.id,String(result).slice(0,10000),now());
     break;
    }

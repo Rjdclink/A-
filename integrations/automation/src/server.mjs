@@ -1,10 +1,11 @@
+import {packCredential} from './integrations/profiles.mjs';
 import http from 'node:http';
 import {readFileSync,mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname,resolve} from 'node:path';
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import {openDatabase,first,all,run,id,now,sha256,json,parse,register,passwordMatches,createSession,authenticated,publicUser,audit,enqueue,queryKnowledge,logEvent} from './core.mjs';
-import {addConnection,connectionHeaders} from './connections.mjs';
+import {addConnection,connectionHeaders,replaceConnectionSecret} from './connections.mjs';
 import {providerProbe,validateProbe} from './integrations/providers.mjs';
 import {getCatalog,getAppDefinition,resolveAppHost} from './integrations/catalog.mjs';
 import {createBillingManager,BillingError} from './billing/manager.mjs';
@@ -213,13 +214,27 @@ export function createApp({dbPath=process.env.DB_PATH||'data/growthveyra.sqlite'
    if(req.method==='POST'&&path==='/api/integrations/connect'){
     const input=await bodyJson(req),app=getAppDefinition(input.provider_id);
     if(!app)fail('Unknown app provider',400);
-    if(input.auth_type!==undefined||typeof input.credential!=='string'||!input.credential.trim())fail('Provider-issued token required',400);
+    if(input.auth_type!==undefined)fail('Provider authorization is selected automatically',400);
+    let credential;try{credential=packCredential(app.id,input);}catch(e){fail(e.message,400);}
     let host;try{host=resolveAppHost(app,input.host);}catch(e){fail(e.message,400);}
-    let info;try{info=addConnection(db,user.tenant_id,{name:app.name,host,auth_type:app.auth_type,secret:input.credential},env);}
+    let info;try{info=addConnection(db,user.tenant_id,{name:app.name,host,auth_type:app.auth_type,secret:credential},env);}
     catch(e){fail(e.message,/not configured/.test(e.message)?503:400);}
     run(db,'UPDATE connections SET provider_id=? WHERE id=? AND tenant_id=?',app.id,info.id,user.tenant_id);
     audit(db,user.tenant_id,user.id,'integration.configured',info.id,{provider:app.id});
     send(res,201,{...info,provider_id:app.id,status:'configured'});return;
+   }
+   const connectionWorkflow=path.match(/^\/api\/integrations\/([0-9a-f-]{36})\/workflow$/);
+   if(req.method==='POST'&&connectionWorkflow){
+    await bodyJson(req);
+    const c=first(db,'SELECT * FROM connections WHERE id=? AND tenant_id=?',connectionWorkflow[1],user.tenant_id);
+    if(!c)fail('Connection not found',404);
+    const app=getAppDefinition(c.provider_id);if(!app?.probe_path)fail('Provider endpoint required',409);
+    const probe=providerProbe(app.id),workflowId=id(),stamp=now();
+    const spec={start:'read',allowed_hosts:[c.host],steps:[{id:'read',type:probe.method==='POST'?'http_post':'http_get',url:'https://'+c.host+app.probe_path,connection_id:c.id,...(probe.body?{body_template:probe.body.payload}:{}),next:'done'},{id:'done',type:'end'}]};
+    validateWorkflow(spec);
+    run(db,'INSERT INTO workflows(id,tenant_id,name,spec,trigger,enabled,allow_external,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)',workflowId,user.tenant_id,app.name+' connected workflow',json(spec),json({type:'manual'}),1,0,stamp,stamp);
+    audit(db,user.tenant_id,user.id,'workflow.created',workflowId,{provider:app.id});
+    send(res,201,{id:workflowId,name:app.name+' connected workflow',spec});return;
    }
    const verifyConnection=path.match(/^\/api\/integrations\/([0-9a-f-]{36})\/test$/);
    if(req.method==='POST'&&verifyConnection){
@@ -230,7 +245,7 @@ export function createApp({dbPath=process.env.DB_PATH||'data/growthveyra.sqlite'
     if(!app?.probe_path)fail('This app lacks an automatic read-only verification endpoint',409);
     const url='https://'+c.host+app.probe_path;
     let auth;try{auth=connectionHeaders(db,user.tenant_id,c.id,url,env);}catch(e){fail(e.message,400);}
-    try{const reply=await (httpRequest||externalHttp)({url,...providerProbe(app.id),allowedHosts:[c.host],headers:auth.headers});validateProbe(app.id,reply);}
+    try{const reply=await (httpRequest||externalHttp)({url:auth.url,...providerProbe(app.id),allowedHosts:[c.host],headers:auth.headers});validateProbe(app.id,reply);}
     catch(e){run(db,'UPDATE connections SET verified_at=NULL WHERE id=? AND tenant_id=?',c.id,user.tenant_id);console.error('Read-only provider check failed:',app.id,e?.name||'Error');fail('App declined or could not verify this token',502);}
     run(db,'UPDATE connections SET verified_at=? WHERE id=? AND tenant_id=?',now(),c.id,user.tenant_id);
     audit(db,user.tenant_id,user.id,'integration.verified',c.id,{provider:app.id});
@@ -242,6 +257,11 @@ export function createApp({dbPath=process.env.DB_PATH||'data/growthveyra.sqlite'
     send(res,201,info);return;
    }
    const connectionMatch=path.match(/^\/api\/connections\/([0-9a-f-]{36})$/);
+   if(req.method==='PATCH'&&connectionMatch){
+    const input=await bodyJson(req),c=first(db,'SELECT * FROM connections WHERE id=? AND tenant_id=?',connectionMatch[1],user.tenant_id);
+    if(!c)fail('Connection not found',404);
+    try{send(res,200,replaceConnectionSecret(db,user.tenant_id,c.id,packCredential(c.provider_id,input),env));}catch(e){fail(e.message,400);}return;
+   }
    if(req.method==='DELETE'&&connectionMatch){
     const deleted=run(db,'DELETE FROM connections WHERE tenant_id=? AND id=?',user.tenant_id,connectionMatch[1]);
     if(!deleted.changes)fail('Connection not found',404);

@@ -1,3 +1,5 @@
+import {serviceSettings} from './service-settings.mjs';
+import {advisory} from './ai.mjs';
 import {createHmac} from 'node:crypto';
 import {createApp} from '../integrations/automation/src/server.mjs';
 import {createSession,first,run,now} from '../integrations/automation/src/core.mjs';
@@ -6,8 +8,8 @@ import {createOrchestration} from './orchestration.mjs';
 import {createNeonIntegration} from './neon.mjs';
 
 function mailer(env){
- if(!env.RECOVERY_SMTP_HOST||!env.RECOVERY_SMTP_USER||!env.RECOVERY_SMTP_PASS||!env.RECOVERY_SMTP_FROM)return null;
- return async({to,subject,text,messageId})=>{
+ const send=async({to,subject,text,messageId})=>{
+  if(!env.RECOVERY_SMTP_HOST||!env.RECOVERY_SMTP_USER||!env.RECOVERY_SMTP_PASS||!env.RECOVERY_SMTP_FROM)throw Error('Mail transport is not configured');
   const {default:nodemailer}=await import('nodemailer');
   const transport=nodemailer.createTransport({
    host:env.RECOVERY_SMTP_HOST,port:Number(env.RECOVERY_SMTP_PORT||587),
@@ -18,14 +20,18 @@ function mailer(env){
   try{await transport.sendMail({from:env.RECOVERY_SMTP_FROM,to,subject,text,messageId});}
   finally{transport.close();}
  };
+ send.configured=()=>Boolean(env.RECOVERY_SMTP_HOST&&env.RECOVERY_SMTP_USER&&env.RECOVERY_SMTP_PASS&&env.RECOVERY_SMTP_FROM);
+ return send;
 }
-export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOMATION_DB_PATH||(env.DB_PATH?env.DB_PATH+'.automation.sqlite':'data/a-plus.automation.sqlite'),autoStart=true,neonIntegration=null}){
+export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOMATION_DB_PATH||(env.DB_PATH?env.DB_PATH+'.automation.sqlite':'data/a-plus.automation.sqlite'),autoStart=true,neonIntegration=null,recoveryOptions={}}){
  // Stable domain-separated key keeps saved credentials usable across restarts.
  if(!env.INTEGRATION_MASTER_KEY&&typeof env.PSEUDONYM_KEY==='string'&&env.PSEUDONYM_KEY.length>=24)env={...env,INTEGRATION_MASTER_KEY:createHmac('sha256',env.PSEUDONYM_KEY).update('aplus:integration-credentials:v1').digest('hex')};
- const growth=createApp({dbPath:automationDbPath,env:{...env,ALLOW_SIGNUP:'false'},autoStart});
+ env={...env,ALLOW_SIGNUP:'false'};
+ const services=serviceSettings(ledger.db,env);
+ const growth=createApp({dbPath:automationDbPath,env,autoStart});
  const orchestration=createOrchestration(ledger.db,growth.db);
  const neon=neonIntegration||createNeonIntegration({env});
- const recovery=createRecovery(ledger.db,{env,mail:mailer(env),onOpportunity:async(workspace,site)=>{
+ const recovery=createRecovery(ledger.db,{...recoveryOptions,env,mail:mailer(env),onOpportunity:async(workspace,site)=>{
   const evidence={opportunity:{website:site.website,summary:site.analysis?.summary||'',score:site.analysis?.priority_score??null}};
   await orchestration.emit(workspace,'recovery.analysis',evidence);
   await neon.record(workspace,'recovery.analysis','recovery:'+site.id+':'+site.updated_at,evidence.opportunity);
@@ -68,6 +74,8 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   return {status:upstream.status,data:parsed};
  }
  async function handle(workspace,path,method,payload){
+  if(path==='integrations/settings'&&method==='GET')return {status:200,data:services.status()};
+  if(path==='integrations/settings'&&method==='POST'){try{return {status:200,data:services.save(payload?.values)};}catch(e){return {status:400,data:{error:e.message}};}}
   if(path==='integrations/status'&&method==='GET'){
    const activeEmail=Boolean(env.RECOVERY_SMTP_HOST&&env.RECOVERY_SMTP_USER&&env.RECOVERY_SMTP_PASS&&env.RECOVERY_SMTP_FROM);
    const square=Boolean(env.SQUARE_ACCESS_TOKEN&&env.SQUARE_LOCATION_ID);
@@ -135,5 +143,5 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   }
   return queued;
  }
- return {handle,webhook,recovery,close,growth,emit,erase:orchestration.erase};
+ return {handle,webhook,recovery,close,growth,emit,env,adviser:args=>advisory({...args,env}),erase:orchestration.erase};
 }

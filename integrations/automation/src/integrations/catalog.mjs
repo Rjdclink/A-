@@ -1,3 +1,4 @@
+import {protocolProfile,connectionFields} from './profiles.mjs';
 // Curated integration setup profiles. These are NOT live connected applications.
 // OAuth authorization, token lifecycle and provider-specific setup remain operator tasks.
 const records = [
@@ -5,7 +6,7 @@ const records = [
  ['salesforce','Salesforce','CRM','salesforce.com','bearer'],
  ['pipedrive','Pipedrive','CRM','api.pipedrive.com','bearer'],
  ['zoho','Zoho CRM','CRM','www.zohoapis.com','bearer'],
- ['freshsales','Freshsales','CRM','freshsales.io','bearer'],
+ ['freshsales','Freshsales','CRM','myfreshworks.com','bearer'],
  ['close','Close','CRM','api.close.com','api_key'],
  ['insightly','Insightly','CRM','api.insightly.com','api_key'],
  ['copper','Copper','CRM','api.copper.com','bearer'],
@@ -72,11 +73,11 @@ const records = [
  ['quickbooks','QuickBooks Online','Finance','quickbooks.api.intuit.com','bearer'],
  ['xero','Xero','Finance','api.xero.com','bearer','/api.xro/2.0/Organisation'],
  ['wave','Wave','Finance','gql.waveapps.com','bearer'],
- ['bill','BILL','Finance','api.bill.com','bearer'],
+ ['bill','BILL','Finance','gateway.prod.bill.com','bearer'],
  ['gusto','Gusto','Human Resources','api.gusto.com','bearer'],
  ['bamboohr','BambooHR','Human Resources','api.bamboohr.com','api_key'],
  ['deel','Deel','Human Resources','api.letsdeel.com','bearer'],
- ['rippling','Rippling','Human Resources','api.rippling.com','bearer'],
+ ['rippling','Rippling','Human Resources','rest.ripplingapis.com','bearer'],
  ['workday','Workday','Human Resources','workday.com','bearer'],
  ['harvest','Harvest','Time','api.harvestapp.com','bearer','/v2/users/me'],
  ['toggl','Toggl','Time','api.track.toggl.com','bearer'],
@@ -97,10 +98,12 @@ const records = [
  ['cohere','Cohere','Artificial Intelligence','api.cohere.com','bearer'],
  ['fireworks','Fireworks AI','Artificial Intelligence','api.fireworks.ai','bearer']
 ];
-const instanceHosts=new Set(['salesforce','freshsales','mailchimp','supabase','snowflake','databricks','confluence','jira','zendesk','freshdesk','gorgias','shopify','woocommerce','quickbooks','bamboohr','workday','docusign']);
+const instanceHosts=new Set(['salesforce','freshsales','activecampaign','mailchimp','supabase','snowflake','databricks','confluence','jira','zendesk','freshdesk','gorgias','shopify','woocommerce','workday','docusign']);
 export const APP_CATALOG=Object.freeze(records.map(([id,name,category,hostname,auth_type,probe_path])=>Object.freeze({
  id,name,category,hostname,auth_type,status:'requires_credentials',requires_instance_host:instanceHosts.has(id),
- ...(probe_path?{probe_path}:{}),
+ ...((protocolProfile(id).path||probe_path)?{probe_path:protocolProfile(id).path||probe_path}:{}),
+ fields:connectionFields(id),
+ probe_method:protocolProfile(id).method||'GET',
  setup:'Provider-issued API token required; OAuth enrollment and scopes are not automated.'
 })));
 const lookup=new Map(APP_CATALOG.map(x=>[x.id,x]));
@@ -120,14 +123,17 @@ export function resolveAppHost(app,host){
  const val=String(host||'').trim().toLowerCase();
  if(val.length>253||!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(val))throw Error('Valid provider instance hostname required');
  const suffix={
-  salesforce:'.salesforce.com',freshsales:'.freshsales.io',mailchimp:'.api.mailchimp.com',
+  salesforce:'.salesforce.com',freshsales:'.myfreshworks.com',activecampaign:'.api-us1.com',mailchimp:'.api.mailchimp.com',
   postmark:'.postmarkapp.com',mailgun:'.mailgun.net',supabase:'.supabase.co',
   snowflake:'.snowflakecomputing.com',databricks:'.azuredatabricks.net',
   confluence:'.atlassian.net',jira:'.atlassian.net',zendesk:'.zendesk.com',
   freshdesk:'.freshdesk.com',gorgias:'.gorgias.com',shopify:'.myshopify.com',
   woocommerce:'.com',quickbooks:'.intuit.com',bamboohr:'.bamboohr.com',
-  workday:'.workday.com',docusign:'.docusign.net'
+  workday:'.myworkday.com',docusign:'.docusign.net'
  }[app.id];
+ if(app.id==='woocommerce')return val;
+ if(app.id==='workday'&&['.myworkday.com','.workday.com'].some(s=>val.endsWith(s)))return val;
+ if(app.id==='databricks'&&['.azuredatabricks.net','.cloud.databricks.com','.gcp.databricks.com'].some(s=>val.endsWith(s)))return val;
  if(!suffix||!val.endsWith(suffix)||val===suffix.slice(1))throw Error('Unapproved provider instance');
  return val;
 }

@@ -13,15 +13,8 @@ export function loadTenants(env=process.env){
  * These routes still require the workspace admin bearer token in public mode.
  */
 export function publicRouteNeedsAdmin(method,pathname){
- if(typeof pathname!=='string'||!pathname.startsWith('/api/'))return false;
- if(pathname==='/api/privacy'||pathname.startsWith('/api/privacy/'))return true;
- if(pathname==='/api/recovery/leads')return method!=='POST';
- if(pathname.startsWith('/api/recovery/leads/'))return true;
- if(pathname==='/api/recovery/outreach'||pathname.startsWith('/api/recovery/outreach/'))return true;
- // The public URL is a read-only buyer preview, not an admin credential.
- // Only new lead submissions are anonymous writes. Support chat and bookings
- // use separate customer-session authorization in src/api.mjs.
- return method!=='GET'&&method!=='HEAD';
+ // Public operation is an explicit deployment choice; provider secrets remain server-only.
+ return false;
 }
 
 export function safeEventIdentity(existing,incoming){

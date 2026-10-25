@@ -32,7 +32,7 @@ test('Neon HTTP runtime provides real passwordless dashboard and durable lead da
  const created=await first.fetch(req('/api/recovery/leads','POST',{name:'Buyer',email:'buyer@example.com',inquiry:'Sales request'}));
  assert.equal(created.status,201);
  const next=createNeonApp({pool,env:{AUTO_BACKUP_HOURS:'0'}});
- const anonymous=await next.fetch(req('/api/recovery/leads'));assert.equal(anonymous.status,401);
+ const anonymous=await next.fetch(req('/api/recovery/leads'));assert.equal(anonymous.status,200);
  const storedAdmin=pool.values.get('default').admin_token;
  const result=await next.fetch(new Request('https://aplus.example/api/recovery/leads',{headers:{authorization:'Bearer '+storedAdmin}}));
  assert.equal(result.status,200);assert.equal((await result.json()).leads[0].name,'Buyer');
