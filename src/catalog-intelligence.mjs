@@ -8,7 +8,11 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
  db.exec(`CREATE TABLE IF NOT EXISTS catalog_products(workspace TEXT NOT NULL,id TEXT NOT NULL,title TEXT NOT NULL,price_cents INTEGER NOT NULL,cost_cents INTEGER,inventory INTEGER,currency TEXT NOT NULL DEFAULT 'USD',url TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL,PRIMARY KEY(workspace,id));
  CREATE TABLE IF NOT EXISTS catalog_events(workspace TEXT NOT NULL,event_id TEXT NOT NULL,product_id TEXT NOT NULL,type TEXT NOT NULL CHECK(type IN ('view','cart','purchase')),customer_hash TEXT,price_cents INTEGER NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(workspace,event_id),FOREIGN KEY(workspace,product_id) REFERENCES catalog_products(workspace,id));
  CREATE INDEX IF NOT EXISTS catalog_events_customer ON catalog_events(workspace,customer_hash,created_at);
- CREATE INDEX IF NOT EXISTS catalog_events_product ON catalog_events(workspace,product_id,type,created_at);`);
+ CREATE INDEX IF NOT EXISTS catalog_events_product ON catalog_events(workspace,product_id,type,created_at);
+ CREATE TABLE IF NOT EXISTS catalog_price_tests(workspace TEXT NOT NULL,id TEXT NOT NULL,product_id TEXT NOT NULL,control_price_cents INTEGER NOT NULL,treatment_price_cents INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'active',created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,PRIMARY KEY(workspace,id),FOREIGN KEY(workspace,product_id) REFERENCES catalog_products(workspace,id));
+ CREATE TABLE IF NOT EXISTS catalog_price_assignments(workspace TEXT NOT NULL,experiment_id TEXT NOT NULL,customer_hash TEXT NOT NULL,variant TEXT NOT NULL CHECK(variant IN ('control','treatment')),price_cents INTEGER NOT NULL,assigned_at INTEGER NOT NULL,PRIMARY KEY(workspace,experiment_id,customer_hash),FOREIGN KEY(workspace,experiment_id) REFERENCES catalog_price_tests(workspace,id));
+ CREATE TABLE IF NOT EXISTS catalog_price_test_events(workspace TEXT NOT NULL,event_id TEXT NOT NULL,experiment_id TEXT NOT NULL,variant TEXT NOT NULL,product_id TEXT NOT NULL,type TEXT NOT NULL,customer_hash TEXT NOT NULL,price_cents INTEGER NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(workspace,event_id),FOREIGN KEY(workspace,event_id) REFERENCES catalog_events(workspace,event_id),FOREIGN KEY(workspace,experiment_id) REFERENCES catalog_price_tests(workspace,id));
+ CREATE INDEX IF NOT EXISTS catalog_price_test_events_by_test ON catalog_price_test_events(workspace,experiment_id,variant,type);`);
  const one=(q,...a)=>db.prepare(q).get(...a),all=(q,...a)=>db.prepare(q).all(...a),run=(q,...a)=>db.prepare(q).run(...a);
  function saveProduct(w,p){
   const id=productId(p.id),title=typeof p.title==='string'?p.title.trim():'';
@@ -24,6 +28,36 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
   run('INSERT INTO catalog_products(workspace,id,title,price_cents,cost_cents,inventory,currency,url,category,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace,id) DO UPDATE SET title=excluded.title,price_cents=excluded.price_cents,cost_cents=excluded.cost_cents,inventory=excluded.inventory,currency=excluded.currency,url=excluded.url,category=excluded.category,updated_at=excluded.updated_at',w,id,title,priceCents,costCents,inventory,currency,url,category,clock());
   return {product:one('SELECT * FROM catalog_products WHERE workspace=? AND id=?',w,id)};
  }
+ function createPriceTest(w,p){
+  const id=productId(p.id),pid=productId(p.product_id);
+  const product=one('SELECT cost_cents,inventory FROM catalog_products WHERE workspace=? AND id=?',w,pid);
+  if(!product)fail('Product not found',404);
+  const control=price(p.control_price_cents,'Control price'),treatment=price(p.treatment_price_cents,'Treatment price');
+  if(control===treatment)fail('Control and treatment prices must differ');
+  if(product.cost_cents!==null&&(control<product.cost_cents||treatment<product.cost_cents))fail('Price-test variants cannot undercut recorded unit cost');
+  if(product.inventory===0)fail('Product is out of stock',409);
+  if(one('SELECT id FROM catalog_price_tests WHERE workspace=? AND id=?',w,id))fail('Price-test ID already exists',409);
+  run("INSERT INTO catalog_price_tests VALUES(?,?,?,?,?,'active',?,?)",w,id,pid,control,treatment,clock(),clock());
+  return {price_test:one('SELECT * FROM catalog_price_tests WHERE workspace=? AND id=?',w,id)};
+ }
+ function assignPriceTest(w,p){
+  const id=productId(p.experiment_id);
+  if(typeof p.customer_id!=='string'||!p.customer_id.trim()||p.customer_id.length>150)fail('Valid customer_id required');
+  if(p.consent!==true)fail('Price-test assignment requires explicit personalization consent');
+  const test=one('SELECT * FROM catalog_price_tests WHERE workspace=? AND id=?',w,id);
+  if(!test)fail('Price test not found',404);
+  const hash=ledger.hash(w,p.customer_id);
+  const existing=one('SELECT variant,price_cents FROM catalog_price_assignments WHERE workspace=? AND experiment_id=? AND customer_hash=?',w,id,hash);
+  if(existing)return {experiment_id:id,product_id:test.product_id,...existing,reused_assignment:true};
+  if(test.status!=='active')fail('Price test is not accepting new assignments',409);
+  const product=one('SELECT title,inventory FROM catalog_products WHERE workspace=? AND id=?',w,test.product_id);
+  if(!product)fail('Product not found',404);
+  if(product.inventory===0)fail('Product is out of stock',409);
+  const variant=Number.parseInt(hash.slice(-2),16)%2===0?'control':'treatment';
+  const priceCents=variant==='control'?test.control_price_cents:test.treatment_price_cents;
+  run('INSERT INTO catalog_price_assignments VALUES(?,?,?,?,?,?)',w,id,hash,variant,priceCents,clock());
+  return {experiment_id:id,product_id:test.product_id,title:product.title,variant,price_cents:priceCents,reused_assignment:false};
+ }
  function recordEvent(w,p){
   const eventId=typeof p.event_id==='string'&&p.event_id.trim()&&p.event_id.length<=150?p.event_id.trim():null;
   if(!eventId||!/^[a-z0-9_:.\/-]+$/i.test(eventId))fail('A stable event_id is required');
@@ -31,16 +65,44 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
   if(!['view','cart','purchase'].includes(p.type))fail('Event type must be view, cart, or purchase');
   const product=one('SELECT price_cents FROM catalog_products WHERE workspace=? AND id=?',w,pid);
   if(!product)fail('Product not found',404);
-  let customerHash=null;
-  if(p.customer_id!==undefined&&p.customer_id!==null&&p.customer_id!==''){
+  let customerHash=null,test=null,variant=null,priceCents=product.price_cents;
+  if(p.price_test_id!==undefined&&p.price_test_id!==null&&p.price_test_id!==''){
+   if(typeof p.customer_id!=='string'||!p.customer_id.trim()||p.customer_id.length>150||p.consent!==true)fail('Price-test events require a consented customer_id');
+   test=one('SELECT * FROM catalog_price_tests WHERE workspace=? AND id=?',w,productId(p.price_test_id));
+   if(!test)fail('Price test not found',404);
+   if(test.product_id!==pid)fail('Price test does not match product',409);
+   customerHash=ledger.hash(w,p.customer_id);
+   const assignment=one('SELECT variant,price_cents FROM catalog_price_assignments WHERE workspace=? AND experiment_id=? AND customer_hash=?',w,test.id,customerHash);
+   if(!assignment)fail('Assign this customer to the price test before recording events',409);
+   variant=assignment.variant;priceCents=assignment.price_cents;
+  }else if(p.customer_id!==undefined&&p.customer_id!==null&&p.customer_id!==''){
    if(p.consent!==true)fail('Customer-linked product events require explicit consent');
    if(typeof p.customer_id!=='string'||p.customer_id.length>150)fail('Invalid customer identifier');
    customerHash=ledger.hash(w,p.customer_id);
   }
-  const existing=one('SELECT product_id,type,customer_hash,price_cents FROM catalog_events WHERE workspace=? AND event_id=?',w,eventId);
-  if(existing){if(existing.product_id!==pid||existing.type!==p.type||existing.customer_hash!==customerHash||existing.price_cents!==product.price_cents)fail('Event ID reused with different details',409);return {created:false,duplicate:true};}
-  run('INSERT INTO catalog_events(workspace,event_id,product_id,type,customer_hash,price_cents,created_at) VALUES(?,?,?,?,?,?,?)',w,eventId,pid,p.type,customerHash,product.price_cents,clock());
-  return {created:true,duplicate:false};
+  db.exec('BEGIN IMMEDIATE');
+  try{
+   const existing=one('SELECT product_id,type,customer_hash,price_cents FROM catalog_events WHERE workspace=? AND event_id=?',w,eventId);
+   const existingTest=one('SELECT experiment_id,variant FROM catalog_price_test_events WHERE workspace=? AND event_id=?',w,eventId);
+   if(existing){
+    if(existing.product_id!==pid||existing.type!==p.type||existing.customer_hash!==customerHash||existing.price_cents!==priceCents)fail('Event ID reused with different details',409);
+    if((test&&(!existingTest||existingTest.experiment_id!==test.id||existingTest.variant!==variant))||(!test&&existingTest))fail('Event ID reused with different price-test details',409);
+    db.exec('COMMIT');return {created:false,duplicate:true};
+   }
+   if(existingTest)fail('Price-test event already exists without its catalog event',409);
+   run('INSERT INTO catalog_events(workspace,event_id,product_id,type,customer_hash,price_cents,created_at) VALUES(?,?,?,?,?,?,?)',w,eventId,pid,p.type,customerHash,priceCents,clock());
+   if(test)run('INSERT INTO catalog_price_test_events VALUES(?,?,?,?,?,?,?,?,?)',w,eventId,test.id,variant,pid,p.type,customerHash,priceCents,clock());
+   db.exec('COMMIT');return {created:true,duplicate:false,price_cents:priceCents,...(test?{price_test_id:test.id,variant}:{})};
+  }catch(e){try{db.exec('ROLLBACK')}catch{}throw e;}
+ }
+ function priceTestReport(w){
+  const tests=all('SELECT t.*,p.title FROM catalog_price_tests t JOIN catalog_products p ON p.workspace=t.workspace AND p.id=t.product_id WHERE t.workspace=? ORDER BY t.created_at DESC',w);
+  const rows=all("SELECT experiment_id,variant,COUNT(DISTINCT CASE WHEN type='view' THEN customer_hash END) AS views,COUNT(DISTINCT CASE WHEN type='cart' THEN customer_hash END) AS carts,COUNT(DISTINCT CASE WHEN type='purchase' THEN customer_hash END) AS purchasers,SUM(CASE WHEN type='purchase' THEN price_cents ELSE 0 END) AS revenue_cents FROM catalog_price_test_events WHERE workspace=? GROUP BY experiment_id,variant",w);
+  return {price_tests:tests.map(t=>{
+   const cohort=variant=>{const r=rows.find(x=>x.experiment_id===t.id&&x.variant===variant);const views=Number(r?.views)||0,purchasers=Number(r?.purchasers)||0;return {variant,price_cents:variant==='control'?t.control_price_cents:t.treatment_price_cents,views,carts:Number(r?.carts)||0,purchasers,revenue_cents:Number(r?.revenue_cents)||0,conversion_rate:views?Math.round(purchasers/views*10000)/100:null};};
+   const control=cohort('control'),treatment=cohort('treatment'),ready=control.views>=100&&treatment.views>=100;
+   return {...t,control,treatment,conversion_difference_percentage_points:control.conversion_rate===null||treatment.conversion_rate===null?null:Math.round((treatment.conversion_rate-control.conversion_rate)*100)/100,interpretation:ready?'Both variants have at least 100 distinct viewers; evaluate uncertainty and business guardrails before choosing.':'Insufficient sample: aim for at least 100 distinct viewers per variant before drawing conclusions.'};
+  }),note:'Randomized customer-level price assignment. Rates are exploratory; no statistical-significance claim is made and storefront price changes are not published by A+.'};
  }
  function productStats(w,days=30){
   if(![7,30,90].includes(days))fail('Reporting window must be 7, 30, or 90 days');
@@ -90,7 +152,7 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
   const map=new Map(products.map(p=>[p.id,p]));
   return [...scores.entries()].filter(([id])=>map.has(id)).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([id,score])=>({...map.get(id),recommendation_score:score,reason:seedIds.length?'Frequently purchased alongside products in the consented customer journey.':'Popular by recorded purchase events.'}));
  }
- function eraseCustomer(w,customerId){const hash=ledger.hash(w,customerId);run('DELETE FROM catalog_events WHERE workspace=? AND customer_hash=?',w,hash);}
+ function eraseCustomer(w,customerId){const hash=ledger.hash(w,customerId);run('DELETE FROM catalog_price_test_events WHERE workspace=? AND customer_hash=?',w,hash);run('DELETE FROM catalog_price_assignments WHERE workspace=? AND customer_hash=?',w,hash);run('DELETE FROM catalog_events WHERE workspace=? AND customer_hash=?',w,hash);}
  function handle(w,path,method,p={}){
   if(path==='products'&&method==='GET')return {products:productStats(w,30)};
   if(path==='products'&&method==='POST')return saveProduct(w,p);
@@ -98,9 +160,14 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
   if(path==='recommendations'&&method==='GET')return {recommendations:recommendations(w)};
   if(path==='recommendations'&&method==='POST')return {recommendations:recommendations(w,p.customer_id,p.consent)};
   if(path==='pricing'&&method==='GET')return pricing(w,Number(p.days||30));
+  if(path==='price-tests'&&method==='GET')return {price_tests:all('SELECT * FROM catalog_price_tests WHERE workspace=? ORDER BY created_at DESC',w)};
+  if(path==='price-tests'&&method==='POST')return createPriceTest(w,p);
+  if(path==='price-tests/assign'&&method==='POST')return assignPriceTest(w,p);
+  if(path==='price-tests/report'&&method==='GET')return priceTestReport(w);
+  if(path==='price-tests/status'&&method==='POST'){if(!['active','paused','closed'].includes(p.status))fail('Status must be active, paused, or closed');const id=productId(p.id);if(!run('UPDATE catalog_price_tests SET status=?,updated_at=? WHERE workspace=? AND id=?',p.status,clock(),w,id).changes)fail('Price test not found',404);return {price_test:one('SELECT * FROM catalog_price_tests WHERE workspace=? AND id=?',w,id)};}
   fail('Catalog intelligence route not found',404);
  }
- function eraseOld(days=180){if(!Number.isInteger(days)||days<1||days>3650)fail('Retention days must be 1–3650');return run('DELETE FROM catalog_events WHERE created_at<?',clock()-days*DAY).changes;}
- function eraseWorkspace(w){run('DELETE FROM catalog_events WHERE workspace=?',w);run('DELETE FROM catalog_products WHERE workspace=?',w);}
- return {handle,productStats,pricing,recommendations,eraseCustomer,eraseWorkspace,eraseOld};
+ function eraseOld(days=180){if(!Number.isInteger(days)||days<1||days>3650)fail('Retention days must be 1–3650');const cutoff=clock()-days*DAY;run('DELETE FROM catalog_price_test_events WHERE created_at<?',cutoff);run('DELETE FROM catalog_price_assignments WHERE assigned_at<?',cutoff);return run('DELETE FROM catalog_events WHERE created_at<?',cutoff).changes;}
+ function eraseWorkspace(w){run('DELETE FROM catalog_price_test_events WHERE workspace=?',w);run('DELETE FROM catalog_price_assignments WHERE workspace=?',w);run('DELETE FROM catalog_price_tests WHERE workspace=?',w);run('DELETE FROM catalog_events WHERE workspace=?',w);run('DELETE FROM catalog_products WHERE workspace=?',w);}
+ return {handle,productStats,pricing,recommendations,priceTestReport,createPriceTest,assignPriceTest,eraseCustomer,eraseWorkspace,eraseOld};
 }
