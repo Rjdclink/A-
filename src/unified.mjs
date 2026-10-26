@@ -81,7 +81,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
  }
  async function handle(workspace,path,method,payload){
   if(path.startsWith('catalog/ingest/')){
-   try{return {status:200,data:catalog.handle(workspace,path.slice(15),method,payload||{})};
+   try{return {status:200,data:catalog.handle(workspace,path.slice(15),method,payload||{})};}
    catch(e){return {status:e.status||500,data:{error:e.status?e.message:'Catalog ingestion failed'}};}
   }
   if(path.startsWith('catalog/')){
