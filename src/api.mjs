@@ -341,7 +341,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
     data.privacy={requests:ledger.pendingPrivacyRequests(w)};
     return response(res,200,data);
    }
-   if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/')||url.pathname.startsWith('/api/integrations/'))){
+   if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/')||url.pathname.startsWith('/api/integrations/')||url.pathname.startsWith('/api/growth-agent/'))){
     const payload=['POST','PATCH','PUT'].includes(req.method)?await parseJSON(req,110000):null;
     const result=await unified.handle(w,url.pathname.slice('/api/'.length),req.method,payload);
     return response(res,result.status,result.data);
