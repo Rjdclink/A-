@@ -341,7 +341,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
     data.privacy={requests:ledger.pendingPrivacyRequests(w)};
     return response(res,200,data);
    }
-   if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/')||url.pathname.startsWith('/api/integrations/')||url.pathname.startsWith('/api/growth-agent/'))){
+   if(unified&&(url.pathname.startsWith('/api/growth/')||url.pathname.startsWith('/api/recovery/')||url.pathname.startsWith('/api/orchestration/')||url.pathname.startsWith('/api/neon/')||url.pathname.startsWith('/api/integrations/')||url.pathname.startsWith('/api/growth-agent/')||url.pathname.startsWith('/api/catalog/'))){
     const payload=['POST','PATCH','PUT'].includes(req.method)?await parseJSON(req,110000):null;
     const result=await unified.handle(w,url.pathname.slice('/api/'.length),req.method,payload);
     return response(res,result.status,result.data);
@@ -377,7 +377,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    if(match&&req.method==='GET'&&!match[2])return response(res,200,ledger.experimentReport(w,match[1]));
    if(req.method==='POST'&&url.pathname==='/api/privacy/erase'){
     const input=await parseJSON(req);if(typeof input.subjectId!=='string'||input.subjectId.length>120||!input.subjectId)fail(400,'Invalid subject token');
-    unified?.engine?.eraseCustomer(w,input.subjectId);return response(res,200,{deleted:ledger.eraseCustomer(w,input.subjectId)});
+    unified?.engine?.eraseCustomer(w,input.subjectId);unified?.catalog?.eraseCustomer(w,input.subjectId);return response(res,200,{deleted:ledger.eraseCustomer(w,input.subjectId)});
    }
    if(req.method==='POST'&&url.pathname==='/api/privacy/export'){
     const input=await parseJSON(req);if(typeof input.subjectId!=='string'||input.subjectId.length>120||!input.subjectId)fail(400,'Invalid subject token');
