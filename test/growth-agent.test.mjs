@@ -42,3 +42,25 @@ test('growth agent persists settings, records runs, and only processes recovery 
   await assert.rejects(agent.handle('alpha','settings','POST',{reporting_days:14}),/Reporting window/);
  }finally{db.close();}
 });
+
+test('customer segments are aggregate-only and use explicit observed-event rules',()=>{
+ const db=new DatabaseSync(':memory:');
+ db.exec("CREATE TABLE events(workspace TEXT,id TEXT,type TEXT,cents INTEGER,campaign TEXT,customer_hash TEXT,digest TEXT,occurred_at INTEGER,PRIMARY KEY(workspace,id))");
+ const now=1700000000000;
+ const ins=db.prepare('INSERT INTO events VALUES(?,?,?,?,?,?,?,?)');
+ const event=(id,type,cents,customer,at)=>ins.run('w',id,type,cents,'',customer,id,at);
+ event('p1','purchase',10000,'buyer1',now-2*86400000);
+ event('p2','purchase',10000,'buyer1',now-86400000);
+ event('c1','cart',0,'intent1',now-86400000);
+ event('l1','lead',0,'lead1',now-86400000);
+ const agent=createGrowthAgent(db,{ledger:{overview:()=>metrics},engine:{tick:async()=>0},clock:()=>now});
+ try{
+  const s=agent.segments('w',30);
+  assert.equal(s.observed_customers,3);
+  assert.equal(s.repeat_buyers.count,1);
+  assert.equal(s.high_intent_no_recent_purchase.count,1);
+  assert.equal(s.lead_no_purchase.count,1);
+  assert.equal(s.high_value.count,1);
+  assert.equal(Object.hasOwn(s,'customers'),false);
+ }finally{db.close();}
+});
