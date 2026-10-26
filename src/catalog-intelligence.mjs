@@ -95,6 +95,7 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
   if(path==='pricing'&&method==='GET')return pricing(w,Number(p.days||30));
   fail('Catalog intelligence route not found',404);
  }
+ function eraseOld(days=180){if(!Number.isInteger(days)||days<1||days>3650)fail('Retention days must be 1–3650');return run('DELETE FROM catalog_events WHERE created_at<?',clock()-days*DAY).changes;}
  function eraseWorkspace(w){run('DELETE FROM catalog_events WHERE workspace=?',w);run('DELETE FROM catalog_products WHERE workspace=?',w);}
- return {handle,productStats,pricing,recommendations,eraseCustomer,eraseWorkspace};
+ return {handle,productStats,pricing,recommendations,eraseCustomer,eraseWorkspace,eraseOld};
 }
