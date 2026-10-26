@@ -363,3 +363,34 @@ $('runGrowthAgent').addEventListener('click',async()=>{
   txt('growthAgentStatus',result.note+` Recovery messages accepted by providers: ${result.recovery_processed}. Accepted does not mean delivered.`);
  }catch(e){notice(e);}
 });
+
+async function loadCatalog(){
+ const [productsResult,recommendationsResult,pricingResult]=await Promise.all([api('/api/catalog/products'),api('/api/catalog/recommendations'),api('/api/catalog/pricing')]);
+ $('catalogProducts').replaceChildren();if(!productsResult.products.length)blank('catalogProducts','Add products to start measuring product performance.');
+ for(const p of productsResult.products){
+  const priceText=money(p.price_cents/100);
+  const detail=priceText+' · '+p.views+' views · '+p.carts+' carts · '+p.purchases+' purchases;
+  const margin=p.gross_margin_percent===null?'Unit cost not supplied':p.gross_margin_percent+'% gross margin';
+  $('catalogProducts').append(line(p.title+' · '+p.id,detail,[],margin));
+ }
+ $('catalogRecommendations').replaceChildren();if(!recommendationsResult.recommendations.length)blank('catalogRecommendations','Record consented customer-linked purchases or aggregate purchases.');
+ for(const p of recommendationsResult.recommendations)$('catalogRecommendations').append(line(p.title,p.reason,[], 'Score '+p.recommendation_score+' · '+money(p.price_cents/100)));
+ $('catalogPricing').replaceChildren();if(!pricingResult.recommendations.length)blank('catalogPricing','No pricing alerts from the recorded product data.');
+ for(const p of pricingResult.recommendations)$('catalogPricing').append(line(p.title,p.reason+' '+p.action,[],p.suggested_price_floor_cents===null||p.suggested_price_floor_cents===undefined?'Review recommendation': 'Suggested test floor: '+money(p.suggested_price_floor_cents/100)));
+ txt('catalogStatus','Loaded '+productsResult.products.length+' products. Recommendations and pricing alerts are based on recorded events, not guaranteed outcomes.');
+}
+$('refreshCatalog').addEventListener('click',()=>loadCatalog().catch(notice));
+$('productForm').addEventListener('submit',async e=>{
+ e.preventDefault();const f=new FormData(e.currentTarget);
+ try{
+  await api('/api/catalog/products','POST',{id:f.get('id'),title:f.get('title'),price_cents:Math.round(Number(f.get('price'))*100),cost_cents:f.get('cost')===''?null:Math.round(Number(f.get('cost'))*100),inventory:f.get('inventory')===''?null:Number(f.get('inventory')),category:f.get('category'),url:f.get('url'),currency:'USD'});
+  await loadCatalog();e.currentTarget.reset();
+ }catch(err){notice(err);}
+});
+$('catalogEventForm').addEventListener('submit',async e=>{
+ e.preventDefault();const f=new FormData(e.currentTarget),customer=f.get('customer_id');
+ try{
+  await api('/api/catalog/events','POST',{event_id:f.get('event_id'),product_id:f.get('product_id'),type:f.get('type'),...(customer?{customer_id:customer,consent:f.has('consent')}:{})});
+  await loadCatalog();e.currentTarget.reset();
+ }catch(err){notice(err);}
+});
