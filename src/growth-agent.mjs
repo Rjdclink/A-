@@ -34,7 +34,7 @@ export function buildGrowthPlan(metrics,objective='Increase profitable revenue')
  actions.sort((a,b)=>rank[a.priority]-rank[b.priority]);
  return {objective:String(objective).trim(),generated_at:new Date().toISOString(),window_days:metrics.windowDays,metrics:{visits:metrics.visits,carts:metrics.carts,checkouts:metrics.checkouts,purchases:metrics.purchases,leads:metrics.leads,revenue:metrics.revenue,currency:metrics.currency},actions:actions.slice(0,10),execution_policy:'Recommendations are evidence-based and review-gated. A+ does not autonomously change ad budgets, prices, publish campaigns, or contact customers from this plan.'};
 }
-export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now(),emit=async()=>({})}={}){
+export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now(),emit=async()=>({}),aiReview=null}={}){
  if(!ledger||typeof ledger.overview!=='function')throw Error('Commerce ledger required');
  db.exec(`CREATE TABLE IF NOT EXISTS growth_agent_settings(workspace TEXT PRIMARY KEY,json TEXT NOT NULL,updated_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS growth_agent_runs(workspace TEXT NOT NULL,id TEXT NOT NULL,created_at INTEGER NOT NULL,objective TEXT NOT NULL,window_days INTEGER NOT NULL,plan_json TEXT NOT NULL,recovery_processed INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(workspace,id));
@@ -63,7 +63,9 @@ export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now(),emit=as
  }
  function plan(w){const s=settings(w),metrics=ledger.overview(w,{now:clock(),days:s.reporting_days});return {...buildGrowthPlan(metrics,s.objective),customer_segments:segments(w,90)};}
  async function publishPlan(w,id,p){
-  return emit(w,'growth.agent_plan',{run_id:id,objective:p.objective,window_days:p.window_days,action_count:p.actions.length,actions:p.actions.map(a=>({id:a.id,priority:a.priority,area:a.area,title:a.title})),customer_segments:p.customer_segments});
+  let ai_review=null;
+  if(typeof aiReview==='function')try{ai_review=String(await aiReview({metrics:ledger.overview(w,{now:clock(),days:p.window_days}),objective:p.objective})).slice(0,8000);}catch{}
+  return emit(w,'growth.agent_plan',{run_id:id,objective:p.objective,window_days:p.window_days,action_count:p.actions.length,actions:p.actions.map(a=>({id:a.id,priority:a.priority,area:a.area,title:a.title})),customer_segments:p.customer_segments,...(ai_review?{ai_review}:{})});
  }
  async function execute(w){
   const s=settings(w),p=plan(w);let processed=0,workflowEvent='not_enabled';
