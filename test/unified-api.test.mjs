@@ -54,3 +54,13 @@ test('catalog and growth-agent APIs are workspace-scoped through the public HTTP
   assert.equal(settings.data.settings.enabled,false);
  }finally{await app.close();}
 });
+
+test('catalog ingestion routes require workspace ingest credentials',async()=>{
+ const app=await setup();try{
+  await call(app.root,'/api/catalog/products?workspace=alpha',tenants.alpha.adminToken,'POST',{id:'sku-ingest',title:'Ingest Product',price_cents:1000,currency:'USD'});
+  const denied=await call(app.root,'/api/catalog/ingest/events?workspace=alpha',tenants.alpha.adminToken,'POST',{event_id:'ingest-1',product_id:'sku-ingest',type:'view'});
+  assert.equal(denied.status,401);
+  const accepted=await call(app.root,'/api/catalog/ingest/events?workspace=alpha',tenants.alpha.ingestToken,'POST',{event_id:'ingest-1',product_id:'sku-ingest',type:'view'});
+  assert.equal(accepted.status,200);
+ }finally{await app.close();}
+});
