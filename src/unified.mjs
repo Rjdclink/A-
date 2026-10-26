@@ -79,7 +79,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
  }
  async function handle(workspace,path,method,payload){
   if(path.startsWith('growth-agent/')){
-   try{return {status:method==='POST'?200:200,data:await growthAgent.handle(workspace,path.slice(13),method,payload||{})};}
+   try{return {status:200,data:await growthAgent.handle(workspace,path.slice(13),method,payload||{})};}
    catch(e){return {status:e.status||500,data:{error:e.status?e.message:'Growth agent operation failed'}};}
   }
   if(path.startsWith('recovery/engine/'))return {status:200,data:await engine.handle(workspace,path.slice(16),method,payload||{})};
