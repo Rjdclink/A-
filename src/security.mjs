@@ -10,7 +10,7 @@ export function loadTenants(env=process.env){
 
 /** Public buyer-review dashboards may accept safe read-only requests, but must not
  * mutate the product catalog, enable growth automation, or trigger customer-facing actions.
- * These routes still require the workspace admin bearer token in public mode.
+ * These routes still require a workspace bearer token in public mode: admin for controls, ingest for event endpoints.
  */
 export function publicRouteNeedsAdmin(method,pathname){
  // Public operation is an explicit deployment choice; provider secrets remain server-only.
