@@ -328,3 +328,33 @@ $('recoveryPolicyForm').addEventListener('submit',async e=>{e.preventDefault();c
 $('recoverySignalForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/api/recovery/engine/contacts','POST',{customer_id:f.get('customer_id'),email:f.get('email'),phone:f.get('phone'),email_consent:f.has('email_consent'),sms_consent:f.has('sms_consent'),consent_source:f.get('consent_source')});await api('/api/recovery/engine/signals','POST',{id:f.get('id'),customer_id:f.get('customer_id'),type:f.get('type'),amount_cents:Number(f.get('amount_cents')),currency:f.get('currency'),return_url:f.get('return_url'),evidence:f.get('evidence')});await loadRecoveryEngine();}catch(err){notice(err);}});
 $('recoveryOutcomeForm').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await api('/api/recovery/engine/signals','POST',{id:f.get('id'),customer_id:f.get('customer_id'),type:f.get('type'),amount_cents:Number(f.get('amount_cents')),currency:f.get('currency')});await loadRecoveryEngine();}catch(err){notice(err);}});
 $('syncRecoveryInvoices').addEventListener('click',async()=>{try{const r=await api('/api/recovery/engine/invoices/sync','POST',{});await loadRecoveryEngine();txt('recoveryEngineStatus',`Synced ${r.synced} failed invoices.`+(r.note?' '+r.note:''));}catch(e){notice(e);}});
+
+async function loadGrowthAgent(){
+ const [settingsResult,planResult]=await Promise.all([api('/api/growth-agent/settings'),api('/api/growth-agent/plan')]);
+ const s=settingsResult.settings,p=planResult.plan;
+ $('growthAgentObjective').value=s.objective;
+ $('growthAgentDays').value=String(s.reporting_days);
+ $('growthAgentEnabled').checked=s.enabled;
+ $('growthAgentPlan').replaceChildren();
+ if(!p.actions.length)blank('growthAgentPlan','No actions available yet.');
+ for(const a of p.actions){
+  const note=a.area+' · '+a.priority.toUpperCase()+' priority · '+a.automation.replaceAll('_',' ');
+  $('growthAgentPlan').append(line(a.title,a.reason+' Next: '+a.next_step,[],note));
+ }
+ txt('growthAgentStatus',`Reviewed ${p.window_days}-day window: ${p.metrics.visits} visits, ${p.metrics.purchases} purchases, ${money(p.metrics.revenue)} recorded revenue. Recommendations are directional and require validation.`);
+}
+$('refreshGrowthAgent').addEventListener('click',()=>loadGrowthAgent().catch(notice));
+$('saveGrowthAgent').addEventListener('click',async()=>{
+ try{
+  const result=await api('/api/growth-agent/settings','POST',{enabled:$('growthAgentEnabled').checked,objective:$('growthAgentObjective').value,reporting_days:Number($('growthAgentDays').value)});
+  txt('growthAgentStatus',result.settings.enabled?'Guarded recovery processing enabled. External marketing, pricing and campaign changes remain review-gated.':'Growth agent saved in review-only mode.');
+  await loadGrowthAgent();
+ }catch(e){notice(e);}
+});
+$('runGrowthAgent').addEventListener('click',async()=>{
+ try{
+  const result=await api('/api/growth-agent/run','POST',{});
+  await loadGrowthAgent();
+  txt('growthAgentStatus',result.note+` Recovery messages accepted by providers: ${result.recovery_processed}. Accepted does not mean delivered.`);
+ }catch(e){notice(e);}
+});
