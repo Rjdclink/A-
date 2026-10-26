@@ -226,7 +226,7 @@ export function createRecoveryEngine(db,{env=process.env,clock=()=>Date.now(),ma
   fail('Recovery engine route not found',404);
  }
  let busy=false;
- async function tick(){if(busy)return 0;busy=true;let count=0;try{for(const c of all("SELECT workspace,id FROM recovery_cases WHERE status='active' AND arm='treatment' ORDER BY updated_at LIMIT 5")){const result=await send(c.workspace,c.id);run('UPDATE recovery_cases SET updated_at=? WHERE workspace=? AND id=?',clock(),c.workspace,c.id);if(result.accepted)count++;}return count;}finally{busy=false;}}
+ async function tick(workspace=null){if(busy)return 0;busy=true;let count=0;try{const cases=workspace?all("SELECT workspace,id FROM recovery_cases WHERE workspace=? AND status='active' AND arm='treatment' ORDER BY updated_at LIMIT 5",workspace):all("SELECT workspace,id FROM recovery_cases WHERE status='active' AND arm='treatment' ORDER BY updated_at LIMIT 5");for(const c of cases){const result=await send(c.workspace,c.id);run('UPDATE recovery_cases SET updated_at=? WHERE workspace=? AND id=?',clock(),c.workspace,c.id);if(result.accepted)count++;}return count;}finally{busy=false;}}
  function eraseCustomer(w,cid){
   for(const c of all('SELECT id FROM recovery_cases WHERE workspace=? AND customer_id=?',w,cid)){
    for(const t of ['recovery_deliveries','recovery_outcomes','recovery_copy'])run('DELETE FROM '+t+' WHERE workspace=? AND case_id=?',w,c.id);
