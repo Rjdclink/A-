@@ -11,4 +11,6 @@ test('public dashboard requires admin authorization for growth-agent mutations',
  assert.equal(publicRouteNeedsAdmin('POST','/api/catalog/products'),true);
  assert.equal(publicRouteNeedsAdmin('POST','/api/catalog/events'),true);
  assert.equal(publicRouteNeedsAdmin('POST','/api/catalog/recommendations'),true);
+ assert.equal(publicRouteNeedsAdmin('POST','/api/catalog/ingest/events'),true);
+ assert.equal(publicRouteNeedsAdmin('POST','/api/catalog/ingest/price-tests/assign'),true);
 });
