@@ -59,7 +59,12 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
    else if(p.views>=20&&p.conversion_rate!==null&&p.conversion_rate<2)recommendations.push({product_id:p.id,title:p.title,priority:'medium',type:'conversion_test',reason:'At least 20 views are recorded and purchase conversion is below 2%; price is only one possible cause.',suggested_price_floor_cents:null,action:'Test price, product page, shipping, and offer presentation separately.'});
    if(p.inventory===0)recommendations.push({product_id:p.id,title:p.title,priority:'high',type:'out_of_stock',reason:'Inventory is recorded as zero.',action:'Check stock sync before promoting this product.'});
   }
-  return {window_days:days,products,recommendations,policy:'Recommendations only. A+ does not change storefront prices or inventory automatically.'};
+  const since=clock()-days*DAY;
+  const cohortRows=all("SELECT product_id,price_cents,SUM(CASE WHEN type='view' THEN 1 ELSE 0 END) AS views,SUM(CASE WHEN type='cart' THEN 1 ELSE 0 END) AS carts,SUM(CASE WHEN type='purchase' THEN 1 ELSE 0 END) AS purchases FROM catalog_events WHERE workspace=? AND created_at>=? GROUP BY product_id,price_cents ORDER BY product_id,price_cents",w,since);
+  const price_cohorts=cohortRows.map(r=>({product_id:r.product_id,price_cents:r.price_cents,views:Number(r.views)||0,carts:Number(r.carts)||0,purchases:Number(r.purchases)||0,conversion_rate:Number(r.views)?Math.round((Number(r.purchases)||0)/Number(r.views)*10000)/100:null}));
+  const grouped=new Map();for(const row of price_cohorts){if(!grouped.has(row.product_id))grouped.set(row.product_id,[]);grouped.get(row.product_id).push(row);}
+  const price_comparisons=[...grouped.entries()].filter(([,rows])=>rows.length>1).map(([product_id,rows])=>({product_id,cohorts:rows,interpretation:'Observed price cohorts are not randomized. Do not declare a winning price without a controlled test and adequate sample size.'}));
+  return {window_days:days,products,recommendations,price_cohorts,price_comparisons,policy:'Recommendations only. A+ does not change storefront prices or inventory automatically.'};
  }
  function recommendations(w,customerId=null,consent=false){
   const since=clock()-90*DAY;
