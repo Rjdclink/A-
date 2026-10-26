@@ -1,4 +1,3 @@
-import {createHash} from 'node:crypto';
 const DAY=86_400_000;
 function fail(message,status=400){throw Object.assign(Error(message),{status});}
 function productId(v){if(typeof v!=='string'||! /^[a-z0-9_-]{1,80}$/i.test(v))fail('Product ID must use letters, numbers, underscores, or hyphens');return v;}
@@ -38,8 +37,10 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
    if(typeof p.customer_id!=='string'||p.customer_id.length>150)fail('Invalid customer identifier');
    customerHash=ledger.hash(w,p.customer_id);
   }
-  const result=run('INSERT OR IGNORE INTO catalog_events(workspace,event_id,product_id,type,customer_hash,price_cents,created_at) VALUES(?,?,?,?,?,?,?)',w,eventId,pid,p.type,customerHash,product.price_cents,clock());
-  return {created:result.changes===1,duplicate:result.changes===0};
+  const existing=one('SELECT product_id,type,customer_hash,price_cents FROM catalog_events WHERE workspace=? AND event_id=?',w,eventId);
+  if(existing){if(existing.product_id!==pid||existing.type!==p.type||existing.customer_hash!==customerHash||existing.price_cents!==product.price_cents)fail('Event ID reused with different details',409);return {created:false,duplicate:true};}
+  run('INSERT INTO catalog_events(workspace,event_id,product_id,type,customer_hash,price_cents,created_at) VALUES(?,?,?,?,?,?,?)',w,eventId,pid,p.type,customerHash,product.price_cents,clock());
+  return {created:true,duplicate:false};
  }
  function productStats(w,days=30){
   if(![7,30,90].includes(days))fail('Reporting window must be 7, 30, or 90 days');
