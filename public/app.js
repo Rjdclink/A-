@@ -365,7 +365,7 @@ $('runGrowthAgent').addEventListener('click',async()=>{
 });
 
 async function loadCatalog(){
- const [productsResult,recommendationsResult,pricingResult]=await Promise.all([api('/api/catalog/products'),api('/api/catalog/recommendations'),api('/api/catalog/pricing')]);
+ const [productsResult,recommendationsResult,pricingResult,priceTestsResult]=await Promise.all([api('/api/catalog/products'),api('/api/catalog/recommendations'),api('/api/catalog/pricing'),api('/api/catalog/price-tests/report')]);
  $('catalogProducts').replaceChildren();if(!productsResult.products.length)blank('catalogProducts','Add products to start measuring product performance.');
  for(const p of productsResult.products){
   const priceText=money(p.price_cents/100);
@@ -379,8 +379,10 @@ async function loadCatalog(){
  for(const p of pricingResult.recommendations)$('catalogPricing').append(line(p.title,p.reason+' '+p.action,[],p.suggested_price_floor_cents===null||p.suggested_price_floor_cents===undefined?'Review recommendation': 'Suggested test floor: '+money(p.suggested_price_floor_cents/100)));
  $('catalogPriceCohorts').replaceChildren();if(!pricingResult.price_cohorts.length)blank('catalogPriceCohorts','Record product events to compare observed prices.');
  for(const p of pricingResult.price_cohorts){const rate=p.conversion_rate===null?'No view denominator':p.conversion_rate+'% observed purchase/view ratio';$('catalogPriceCohorts').append(line(p.product_id+' · '+money(p.price_cents/100),p.views+' views · '+p.carts+' carts · '+p.purchases+' purchases',[],rate));}
- for(const el of document.querySelectorAll('#productForm input, #productForm button, #catalogEventForm input, #catalogEventForm select, #catalogEventForm button'))el.disabled=S.public;
- txt('catalogStatus',S.public?'Read-only public dashboard. An administrator must connect a private workspace to update products or events.':'Loaded '+productsResult.products.length+' products. Recommendations and pricing alerts are based on recorded events, not guaranteed outcomes.');
+ for(const el of document.querySelectorAll('#productForm input, #productForm button, #catalogEventForm input, #catalogEventForm select, #catalogEventForm button, #priceTestForm input, #priceTestForm button, #priceTestAssignmentForm input, #priceTestAssignmentForm button'))el.disabled=S.public;
+ $('catalogPriceTests').replaceChildren();if(!priceTestsResult.price_tests.length)blank('catalogPriceTests','No controlled price tests yet.');
+ for(const p of priceTestsResult.price_tests){const c=p.control,t=p.treatment;const info='Control '+money(c.price_cents/100)+' · '+c.views+' viewers · '+(c.conversion_rate===null?'—':c.conversion_rate+'% conversion')+' | Treatment '+money(t.price_cents/100)+' · '+t.views+' viewers · '+(t.conversion_rate===null?'—':t.conversion_rate+'% conversion');$('catalogPriceTests').append(line(p.title+' · '+p.id,info,[],p.status+' · '+p.interpretation));}
+ txt('catalogStatus',S.public?'Read-only public dashboard. An administrator must connect a private workspace to update products, events, or price tests.':'Loaded '+productsResult.products.length+' products. Recommendations and pricing alerts are based on recorded events, not guaranteed outcomes.');
 }
 $('refreshCatalog').addEventListener('click',()=>loadCatalog().catch(notice));
 $('productForm').addEventListener('submit',async e=>{
@@ -395,5 +397,20 @@ $('catalogEventForm').addEventListener('submit',async e=>{
  try{
   await api('/api/catalog/events','POST',{event_id:f.get('event_id'),product_id:f.get('product_id'),type:f.get('type'),...(customer?{customer_id:customer,consent:f.has('consent')}:{})});
   await loadCatalog();e.currentTarget.reset();
+ }catch(err){notice(err);}
+});
+
+$('priceTestForm').addEventListener('submit',async e=>{
+ e.preventDefault();const f=new FormData(e.currentTarget);
+ try{
+  await api('/api/catalog/price-tests','POST',{id:f.get('id'),product_id:f.get('product_id'),control_price_cents:Math.round(Number(f.get('control_price'))*100),treatment_price_cents:Math.round(Number(f.get('treatment_price'))*100)});
+  await loadCatalog();e.currentTarget.reset();
+ }catch(err){notice(err);}
+});
+$('priceTestAssignmentForm').addEventListener('submit',async e=>{
+ e.preventDefault();const f=new FormData(e.currentTarget);
+ try{
+  const result=await api('/api/catalog/price-tests/assign','POST',{experiment_id:f.get('experiment_id'),customer_id:f.get('customer_id'),consent:f.has('consent')});
+  txt('priceTestAssignmentOutput','Assigned '+result.variant+' variant at '+money(result.price_cents/100)+'. Add this experiment ID and the same customer ID to recorded view/cart/purchase events.');
  }catch(err){notice(err);}
 });
