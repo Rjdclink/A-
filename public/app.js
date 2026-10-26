@@ -335,13 +335,14 @@ async function loadGrowthAgent(){
  $('growthAgentObjective').value=s.objective;
  $('growthAgentDays').value=String(s.reporting_days);
  $('growthAgentEnabled').checked=s.enabled;
+ $('growthAgentEnabled').disabled=S.public;$('saveGrowthAgent').disabled=S.public;$('runGrowthAgent').disabled=S.public;
  $('growthAgentPlan').replaceChildren();
  if(!p.actions.length)blank('growthAgentPlan','No actions available yet.');
  for(const a of p.actions){
   const note=a.area+' · '+a.priority.toUpperCase()+' priority · '+a.automation.replaceAll('_',' ');
   $('growthAgentPlan').append(line(a.title,a.reason+' Next: '+a.next_step,[],note));
  }
- txt('growthAgentStatus',`Reviewed ${p.window_days}-day window: ${p.metrics.visits} visits, ${p.metrics.purchases} purchases, ${money(p.metrics.revenue)} recorded revenue. Recommendations are directional and require validation.`);
+ txt('growthAgentStatus',S.public?'Read-only public dashboard. An administrator must connect a private workspace to change settings or run guarded actions.':`Reviewed ${p.window_days}-day window: ${p.metrics.visits} visits, ${p.metrics.purchases} purchases, ${money(p.metrics.revenue)} recorded revenue. Recommendations are directional and require validation.`);
 }
 $('refreshGrowthAgent').addEventListener('click',()=>loadGrowthAgent().catch(notice));
 $('saveGrowthAgent').addEventListener('click',async()=>{
