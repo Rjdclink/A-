@@ -374,7 +374,7 @@ async function loadCatalog(){
   $('catalogProducts').append(line(p.title+' · '+p.id,detail,[],margin));
  }
  $('catalogRecommendations').replaceChildren();if(!recommendationsResult.recommendations.length)blank('catalogRecommendations','Record consented customer-linked purchases or aggregate purchases.');
- for(const p of recommendationsResult.recommendations)$('catalogRecommendations').append(line(p.title,p.reason,[], 'Score '+p.recommendation_score+' · '+money(p.price_cents/100)));
+ for(const p of recommendationsResult.recommendations)$('catalogRecommendations').append(line(p.title,p.reason,[], 'Observed count '+p.recommendation_score+' · '+money(p.price_cents/100)));
  $('catalogPricing').replaceChildren();if(!pricingResult.recommendations.length)blank('catalogPricing','No pricing alerts from the recorded product data.');
  for(const p of pricingResult.recommendations)$('catalogPricing').append(line(p.title,p.reason+' '+p.action,[],p.suggested_price_floor_cents===null||p.suggested_price_floor_cents===undefined?'Review recommendation': 'Suggested test floor: '+money(p.suggested_price_floor_cents/100)));
  $('catalogPriceCohorts').replaceChildren();if(!pricingResult.price_cohorts.length)blank('catalogPriceCohorts','Record product events to compare observed prices.');
