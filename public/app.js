@@ -337,11 +337,15 @@ async function loadGrowthAgent(){
  $('growthAgentEnabled').checked=s.enabled;
  $('growthAgentEnabled').disabled=S.public;$('saveGrowthAgent').disabled=S.public;$('runGrowthAgent').disabled=S.public;
  $('growthAgentPlan').replaceChildren();
+ $('growthAgentSegments').replaceChildren();
  if(!p.actions.length)blank('growthAgentPlan','No actions available yet.');
  for(const a of p.actions){
   const note=a.area+' · '+a.priority.toUpperCase()+' priority · '+a.automation.replaceAll('_',' ');
   $('growthAgentPlan').append(line(a.title,a.reason+' Next: '+a.next_step,[],note));
  }
+ const seg=p.customer_segments||{};
+ const segmentItems=[['High-value customers',seg.high_value?.count||0,'Top 10% of observed purchasers by recorded revenue; descriptive only.'],['Repeat buyers',seg.repeat_buyers?.count||0,'At least two purchase events in the reporting window.'],['High-intent, no recent purchase',seg.high_intent_no_recent_purchase?.count||0,'Cart/checkout event in the last 7 days without a purchase in that period.'],['Leads without purchases',seg.lead_no_purchase?.count||0,'Lead events and no purchase event in the reporting window.'],['Lapsed buyers',seg.lapsed_buyers?.count||0,'A recorded purchase in the window, with last purchase over 30 days ago.']];
+ for(const [name,count,note] of segmentItems)$('growthAgentSegments').append(line(name,String(count)+' customer(s)',[],note));
  txt('growthAgentStatus',S.public?'Read-only public dashboard. An administrator must connect a private workspace to change settings or run guarded actions.':`Reviewed ${p.window_days}-day window: ${p.metrics.visits} visits, ${p.metrics.purchases} purchases, ${money(p.metrics.revenue)} recorded revenue. Recommendations are directional and require validation.`);
 }
 $('refreshGrowthAgent').addEventListener('click',()=>loadGrowthAgent().catch(notice));
