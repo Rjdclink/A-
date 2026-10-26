@@ -85,7 +85,7 @@ export function createCatalogIntelligence(db,{ledger,clock=()=>Date.now()}={}){
    const existing=one('SELECT product_id,type,customer_hash,price_cents FROM catalog_events WHERE workspace=? AND event_id=?',w,eventId);
    const existingTest=one('SELECT experiment_id,variant FROM catalog_price_test_events WHERE workspace=? AND event_id=?',w,eventId);
    if(existing){
-    if(existing.product_id!==pid||existing.type!==p.type||existing.customer_hash!==customerHash||existing.price_cents!==priceCents)fail('Event ID reused with different details',409);
+    if(existing.product_id!==pid||existing.type!==p.type||existing.customer_hash!==customerHash||(test&&existing.price_cents!==priceCents))fail('Event ID reused with different details',409);
     if((test&&(!existingTest||existingTest.experiment_id!==test.id||existingTest.variant!==variant))||(!test&&existingTest))fail('Event ID reused with different price-test details',409);
     db.exec('COMMIT');return {created:false,duplicate:true};
    }
