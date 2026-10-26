@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+const DAY=86_400_000;
 const DEFAULTS={enabled:false,objective:'Increase profitable revenue',reporting_days:30};
 function fail(message,status=400){throw Object.assign(Error(message),{status});}
 function validateSettings(input,current){
@@ -41,7 +42,26 @@ export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now()}={}){
  const one=(q,...a)=>db.prepare(q).get(...a),all=(q,...a)=>db.prepare(q).all(...a),run=(q,...a)=>db.prepare(q).run(...a);
  const settings=w=>({...DEFAULTS,...JSON.parse(one('SELECT json FROM growth_agent_settings WHERE workspace=?',w)?.json||'{}')});
  function save(w,input){const next=validateSettings(input,settings(w));run('INSERT INTO growth_agent_settings VALUES(?,?,?) ON CONFLICT(workspace) DO UPDATE SET json=excluded.json,updated_at=excluded.updated_at',w,JSON.stringify(next),clock());return {settings:next};}
- function plan(w){const s=settings(w),metrics=ledger.overview(w,{now:clock(),days:s.reporting_days});return buildGrowthPlan(metrics,s.objective);}
+ function segments(w,days=90){
+  if(![7,30,90].includes(days))fail('Segment window must be 7, 30, or 90 days');
+  const now=clock(),start=now-days*DAY,recent=now-7*DAY;
+  const sql="SELECT customer_hash, SUM(CASE WHEN type='purchase' THEN 1 ELSE 0 END) AS purchases, SUM(CASE WHEN type='purchase' THEN cents ELSE 0 END) AS revenue_cents, SUM(CASE WHEN type='lead' THEN 1 ELSE 0 END) AS leads, SUM(CASE WHEN type='cart' AND occurred_at>=? THEN 1 ELSE 0 END) AS recent_carts, SUM(CASE WHEN type='checkout' AND occurred_at>=? THEN 1 ELSE 0 END) AS recent_checkouts, MAX(CASE WHEN type='purchase' THEN occurred_at ELSE 0 END) AS last_purchase FROM events WHERE workspace=? AND customer_hash IS NOT NULL AND occurred_at>=? GROUP BY customer_hash";
+  const rows=all(sql,recent,recent,w,start);
+  const buyers=rows.filter(r=>r.purchases>0).sort((a,b)=>b.revenue_cents-a.revenue_cents);
+  const highValueCount=buyers.length?Math.max(1,Math.ceil(buyers.length*.1)):0;
+  const highValue=new Set(buyers.slice(0,highValueCount).map(r=>r.customer_hash));
+  const result={observed_customers:rows.length,high_value:{count:0,revenue:0},repeat_buyers:{count:0},high_intent_no_recent_purchase:{count:0},lead_no_purchase:{count:0},lapsed_buyers:{count:0},window_days:days,definitions:'Rule-based observed segments, not trained predictions. Customer identities are not returned.'};
+  for(const r of rows){
+   if(highValue.has(r.customer_hash)){result.high_value.count++;result.high_value.revenue+=r.revenue_cents/100;}
+   if(r.purchases>=2)result.repeat_buyers.count++;
+   if((r.recent_carts>0||r.recent_checkouts>0)&&r.last_purchase<recent)result.high_intent_no_recent_purchase.count++;
+   if(r.leads>0&&r.purchases===0)result.lead_no_purchase.count++;
+   if(r.purchases>0&&r.last_purchase>0&&r.last_purchase<now-30*DAY)result.lapsed_buyers.count++;
+  }
+  result.high_value.revenue=Math.round(result.high_value.revenue*100)/100;
+  return result;
+ }
+ function plan(w){const s=settings(w),metrics=ledger.overview(w,{now:clock(),days:s.reporting_days});return {...buildGrowthPlan(metrics,s.objective),customer_segments:segments(w,s.reporting_days)};}
  async function execute(w){
   const s=settings(w),p=plan(w);let processed=0;
   // Only run the existing, merchant-enabled recovery queue. The recovery engine independently
@@ -61,5 +81,5 @@ export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now()}={}){
   fail('Growth agent route not found',404);
  }
  function erase(w){run('DELETE FROM growth_agent_settings WHERE workspace=?',w);run('DELETE FROM growth_agent_runs WHERE workspace=?',w);}
- return {handle,plan,execute,settings,erase};
+ return {handle,plan,execute,settings,segments,erase};
 }
