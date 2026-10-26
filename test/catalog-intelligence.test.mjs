@@ -20,7 +20,7 @@ test('catalog validates products, deduplicates events, and rejects conflicting e
   assert.equal(event(f,'e1','p1','view','customer-1').created,true);
   assert.equal(event(f,'e1','p1','view','customer-1').duplicate,true);
   assert.throws(()=>event(f,'e1','p1','purchase','customer-1'),/Event ID reused/);
-  assert.throws(()=>product(f,'bad','Invalid URL',100,50),()=>false);
+  assert.throws(()=>f.catalog.handle('w','products','POST',{id:'bad',title:'Invalid URL',price_cents:100,cost_cents:50,url:'http://example.com'}),/HTTPS/);
  }finally{f.db.close();}
 });
 test('catalog recommendations use consented customer hashes and pricing returns review-only margin guidance',()=>{
