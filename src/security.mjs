@@ -14,7 +14,7 @@ export function loadTenants(env=process.env){
  */
 export function publicRouteNeedsAdmin(method,pathname){
  // Public operation is an explicit deployment choice; provider secrets remain server-only.
- return false;
+ return method!=='GET'&&pathname.startsWith('/api/growth-agent/');
 }
 
 export function safeEventIdentity(existing,incoming){
