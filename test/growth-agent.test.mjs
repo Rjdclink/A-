@@ -37,7 +37,8 @@ test('growth agent persists settings, records runs, and only processes recovery 
   assert.equal(enabled.recovery_processed,2);
   assert.deepEqual(processed,['alpha']);
   assert.equal(enabled.plan.window_days,7);
-  assert.equal(agent.handle('alpha','runs','GET').runs.length,2);
-  assert.throws(()=>agent.settings('alpha')&&agent.handle('alpha','settings','POST',{reporting_days:14}),/Reporting window/);
+  const history=await agent.handle('alpha','runs','GET');
+  assert.equal(history.runs.length,2);
+  await assert.rejects(agent.handle('alpha','settings','POST',{reporting_days:14}),/Reporting window/);
  }finally{db.close();}
 });
