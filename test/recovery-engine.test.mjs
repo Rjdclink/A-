@@ -87,3 +87,26 @@ test('AI drafts require review, preserve unsubscribe and invalidate approval whe
 test('unavailable AI returns reviewable fallback and customer erasure prevents recreation',async()=>{
  const f=fixture({env:{AI_API_KEY:'fixture'},ai:async()=>{throw Error('unavailable');}});try{const c=await treatment(f);const d=await f.call('cases/'+c.id+'/draft',{});assert.equal(d.draft.mode,'deterministic_fallback');f.e.eraseCustomer('w',c.customer_id);assert.equal(f.e.exportCustomer('w',c.customer_id).contact,null);await assert.rejects(enroll(f,c.customer_id),/erased/);assert.equal((await f.call('signals',{id:'new',customer_id:c.customer_id,type:'purchase'})).suppressed,true);}finally{f.close();}
 });
+
+test('workspace-scoped recovery ticks do not process another workspace',async()=>{
+ const f=fixture();try{
+  await f.e.handle('other','settings','POST',{enabled:true});
+  let chosen=null;
+  for(let i=0;i<20&&!chosen;i++){
+   const cid='other-customer-'+i;
+   await f.e.handle('other','contacts','POST',{customer_id:cid,email:cid+'@example.com',email_consent:true,sms_consent:false,consent_source:'checkout opt-in'});
+   await f.e.handle('other','signals','POST',{id:'other-signal:'+i,customer_id:cid,type:'checkout',amount_cents:2500,currency:'USD',return_url:'https://shop.example/checkout',evidence:'Customer requested checkout'});
+   const result=await f.e.handle('other','cases','GET',{});
+   chosen=result.cases.find(c=>c.customer_id===cid&&c.arm==='treatment')||null;
+  }
+  assert.ok(chosen,'a treatment case should be assigned in the fixture');
+  const before=(await f.e.handle('other','cases','GET',{})).cases.find(c=>c.id===chosen.id).updated_at;
+  f.advance(3*HOUR);
+  await f.e.tick('w');
+  const untouched=(await f.e.handle('other','cases','GET',{})).cases.find(c=>c.id===chosen.id).updated_at;
+  assert.equal(untouched,before);
+  await f.e.tick('other');
+  const processed=(await f.e.handle('other','cases','GET',{})).cases.find(c=>c.id===chosen.id).updated_at;
+  assert.ok(processed>before);
+ }finally{f.close();}
+});
