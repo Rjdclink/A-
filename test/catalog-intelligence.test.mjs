@@ -60,3 +60,30 @@ test('catalog exposes observed price cohorts without claiming a causal winner',(
   assert.match(result.price_comparisons[0].interpretation,/not randomized/);
  }finally{f.db.close();}
 });
+
+test('price tests keep customer assignments stable, require consent, and report observed variants',()=>{
+ const f=fixture();try{
+  product(f,'p1','Product One',1000,500,100);
+  const created=f.catalog.handle('w','price-tests','POST',{id:'price-v1',product_id:'p1',control_price_cents:1000,treatment_price_cents:1200});
+  assert.equal(created.price_test.status,'active');
+  assert.throws(()=>f.catalog.handle('w','price-tests','POST',{id:'below-cost',product_id:'p1',control_price_cents:400,treatment_price_cents:1200}),/cannot undercut/);
+  assert.throws(()=>f.catalog.handle('w','price-tests/assign','POST',{experiment_id:'price-v1',customer_id:'customer-a',consent:false}),/explicit/);
+  const a=f.catalog.handle('w','price-tests/assign','POST',{experiment_id:'price-v1',customer_id:'customer-a',consent:true});
+  const b=f.catalog.handle('w','price-tests/assign','POST',{experiment_id:'price-v1',customer_id:'customer-b',consent:true});
+  assert.notEqual(a.variant,b.variant);
+  assert.deepEqual(f.catalog.handle('w','price-tests/assign','POST',{experiment_id:'price-v1',customer_id:'customer-a',consent:true}).variant,a.variant);
+  const av=f.catalog.handle('w','events','POST',{event_id:'price-view-a',product_id:'p1',type:'view',customer_id:'customer-a',consent:true,price_test_id:'price-v1'});
+  const bv=f.catalog.handle('w','events','POST',{event_id:'price-view-b',product_id:'p1',type:'view',customer_id:'customer-b',consent:true,price_test_id:'price-v1'});
+  const bp=f.catalog.handle('w','events','POST',{event_id:'price-purchase-b',product_id:'p1',type:'purchase',customer_id:'customer-b',consent:true,price_test_id:'price-v1'});
+  assert.equal(av.price_cents,a.price_cents);
+  assert.equal(bv.price_cents,b.price_cents);
+  assert.equal(bp.price_cents,b.price_cents);
+  const report=f.catalog.handle('w','price-tests/report','GET',{}).price_tests[0];
+  assert.equal(report.control.views,1);
+  assert.equal(report.treatment.views,1);
+  assert.equal(report.treatment.purchasers,1);
+  assert.match(report.interpretation,/Insufficient sample/);
+  f.catalog.handle('w','price-tests/status','POST',{id:'price-v1',status:'paused'});
+  assert.throws(()=>f.catalog.handle('w','price-tests/assign','POST',{experiment_id:'price-v1',customer_id:'customer-c',consent:true}),/not accepting/);
+ }finally{f.db.close();}
+});
