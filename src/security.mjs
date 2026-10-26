@@ -8,8 +8,8 @@ export function loadTenants(env=process.env){
  return {default:{adminToken:env.ADMIN_TOKEN,ingestToken:env.INGEST_TOKEN}};
 }
 
-/** Public buyer-review dashboards may accept new lead submissions, but must not
- * disclose stored contact details or permit unverified outreach and privacy actions.
+/** Public buyer-review dashboards may accept safe read-only requests, but must not
+ * mutate the product catalog, enable growth automation, or trigger customer-facing actions.
  * These routes still require the workspace admin bearer token in public mode.
  */
 export function publicRouteNeedsAdmin(method,pathname){
