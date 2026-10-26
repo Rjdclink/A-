@@ -35,7 +35,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
  const orchestration=createOrchestration(ledger.db,growth.db);
  const neon=neonIntegration||createNeonIntegration({env});
  const engine=createRecoveryEngine(ledger.db,{env,mail:mailer(env),...recoveryOptions.engine});
- const growthAgent=createGrowthAgent(ledger.db,{ledger,engine});
+ const growthAgent=createGrowthAgent(ledger.db,{ledger,engine,emit:(w,event,data)=>orchestration.emit(w,event,data)});
  const catalog=createCatalogIntelligence(ledger.db,{ledger});
  const recovery=createRecovery(ledger.db,{...recoveryOptions,env,mail:mailer(env),onOpportunity:async(workspace,site)=>{
   const evidence={opportunity:{website:site.website,summary:site.analysis?.summary||'',score:site.analysis?.priority_score??null}};
@@ -144,7 +144,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   const raw=await upstream.text();let data;try{data=JSON.parse(raw);}catch{data={error:'Invalid upstream response'};}
   return {status:upstream.status,data};
  }
- const tick=async()=>{await recovery.tick();await engine.tick();};
+ const tick=async()=>{await recovery.tick();await engine.tick();await growthAgent.tick();};
  const interval=autoStart?setInterval(()=>tick().catch(e=>console.error('Recovery scheduler:',e.message)),60000):null;
  interval?.unref();
  async function close(){
