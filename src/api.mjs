@@ -201,7 +201,7 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    if(preloaded&&url.searchParams.has('workspace')&&url.searchParams.get('workspace')!==w)fail(400,'Conflicting workspace identifiers');
    if(publicDashboard&&w!==publicWorkspace)return response(res,403,{error:'Workspace unavailable'});
    if(!Object.hasOwn(tenants,w))return response(res,401,{error:'Unauthorized'});
-   const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname));
+   const isIngest=req.method==='POST'&&(url.pathname==='/api/events'||/^\/api\/experiments\/[^/]+\/assign$/.test(url.pathname)||['/api/catalog/ingest/events','/api/catalog/ingest/price-tests/assign','/api/catalog/ingest/recommendations'].includes(url.pathname));
    const isSupport=url.pathname.startsWith('/api/support/');
    const supportPublicGet=new Set(['/api/support/config','/api/support/calendar/slots']);
    const supportPublicPost=new Set(['/api/support/chat','/api/support/thread','/api/support/rating','/api/support/appointments','/api/support/handoff','/api/support/team/login','/api/support/calendar/book','/api/support/calendar/cancel','/api/support/calendar/my','/api/support/files','/api/support/files/read','/api/support/files/list','/api/support/privacy/self/export','/api/support/privacy/self/erase']);
