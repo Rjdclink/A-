@@ -369,7 +369,7 @@ async function loadCatalog(){
  $('catalogProducts').replaceChildren();if(!productsResult.products.length)blank('catalogProducts','Add products to start measuring product performance.');
  for(const p of productsResult.products){
   const priceText=money(p.price_cents/100);
-  const detail=priceText+' · '+p.views+' views · '+p.carts+' carts · '+p.purchases+' purchases;
+  const detail=priceText+' · '+p.views+' views · '+p.carts+' carts · '+p.purchases+' purchases';
   const margin=p.gross_margin_percent===null?'Unit cost not supplied':p.gross_margin_percent+'% gross margin';
   $('catalogProducts').append(line(p.title+' · '+p.id,detail,[],margin));
  }
@@ -377,7 +377,8 @@ async function loadCatalog(){
  for(const p of recommendationsResult.recommendations)$('catalogRecommendations').append(line(p.title,p.reason,[], 'Score '+p.recommendation_score+' · '+money(p.price_cents/100)));
  $('catalogPricing').replaceChildren();if(!pricingResult.recommendations.length)blank('catalogPricing','No pricing alerts from the recorded product data.');
  for(const p of pricingResult.recommendations)$('catalogPricing').append(line(p.title,p.reason+' '+p.action,[],p.suggested_price_floor_cents===null||p.suggested_price_floor_cents===undefined?'Review recommendation': 'Suggested test floor: '+money(p.suggested_price_floor_cents/100)));
- txt('catalogStatus','Loaded '+productsResult.products.length+' products. Recommendations and pricing alerts are based on recorded events, not guaranteed outcomes.');
+ for(const el of document.querySelectorAll('#productForm input, #productForm button, #catalogEventForm input, #catalogEventForm select, #catalogEventForm button'))el.disabled=S.public;
+ txt('catalogStatus',S.public?'Read-only public dashboard. An administrator must connect a private workspace to update products or events.':'Loaded '+productsResult.products.length+' products. Recommendations and pricing alerts are based on recorded events, not guaranteed outcomes.');
 }
 $('refreshCatalog').addEventListener('click',()=>loadCatalog().catch(notice));
 $('productForm').addEventListener('submit',async e=>{
