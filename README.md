@@ -14,6 +14,15 @@ A minimal, privacy-conscious foundation for e-commerce conversion measurement, r
 - **Same AI as GrowthVeyra:** Vireonix \`auto\` chat-completions endpoint, only aggregate commerce metrics passed to the model; AI proposals are advisory and never send marketing or purchase ads autonomously.
 - **Testing:** direct Node test suite, HTTP integration tests and migration tests. Run npm run verify locally; GitHub Actions is not configured or required.
 
+## Growth Agent (integrated, guarded execution)
+
+The overview dashboard includes a workspace-scoped Growth Agent that ranks evidence-based sales, marketing, analytics, and retention opportunities from recorded commerce events and campaign economics. It stores its objective, 7/30/90-day reporting window, and run history. The agent can process the existing recovery queue only when explicitly enabled; the recovery engine continues to enforce its own sequence policy, channel consent, holdouts, purchase/reply/opt-out stops, and provider delivery safeguards.
+
+- API: `GET/POST /api/growth-agent/settings`, `GET /api/growth-agent/plan`, `POST /api/growth-agent/run`, and `GET /api/growth-agent/runs`.
+- Recommendations distinguish observed signals from hypotheses and do not claim causality or guaranteed revenue.
+- This is a guarded first step, not unrestricted autonomous marketing: ad-budget changes, live price changes, campaign publication, and unapproved customer messaging are not performed by the Growth Agent. Those require specific provider integrations, merchant authorization, and explicit execution policies.
+- Tests: `test/growth-agent.test.mjs`; syntax verification includes `src/growth-agent.mjs`.
+
 ## Customer Service Hub (integrated, self-hosted capabilities)
 
 A+ now contains a separate customer-service system: merchant-branded website chat, a multilingual interface with English/Spanish/French greetings, verified FAQs with atomic JSON/CSV import, individual staff accounts and access roles, a searchable ticket inbox, explicit human handoffs, internal notes, saved replies, automatic local staff routing, in-app alerts, service-level tracking, customer satisfaction trends, opt-in leads, customer and agent attachments, and ticket-level self-service export and erasure.
