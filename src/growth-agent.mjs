@@ -34,7 +34,7 @@ export function buildGrowthPlan(metrics,objective='Increase profitable revenue')
  actions.sort((a,b)=>rank[a.priority]-rank[b.priority]);
  return {objective:String(objective).trim(),generated_at:new Date().toISOString(),window_days:metrics.windowDays,metrics:{visits:metrics.visits,carts:metrics.carts,checkouts:metrics.checkouts,purchases:metrics.purchases,leads:metrics.leads,revenue:metrics.revenue,currency:metrics.currency},actions:actions.slice(0,10),execution_policy:'Recommendations are evidence-based and review-gated. A+ does not autonomously change ad budgets, prices, publish campaigns, or contact customers from this plan.'};
 }
-export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now()}={}){
+export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now(),emit=async()=>({})}={}){
  if(!ledger||typeof ledger.overview!=='function')throw Error('Commerce ledger required');
  db.exec(`CREATE TABLE IF NOT EXISTS growth_agent_settings(workspace TEXT PRIMARY KEY,json TEXT NOT NULL,updated_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS growth_agent_runs(workspace TEXT NOT NULL,id TEXT NOT NULL,created_at INTEGER NOT NULL,objective TEXT NOT NULL,window_days INTEGER NOT NULL,plan_json TEXT NOT NULL,recovery_processed INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(workspace,id));
@@ -62,14 +62,30 @@ export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now()}={}){
   return result;
  }
  function plan(w){const s=settings(w),metrics=ledger.overview(w,{now:clock(),days:s.reporting_days});return {...buildGrowthPlan(metrics,s.objective),customer_segments:segments(w,90)};}
+ async function publishPlan(w,id,p){
+  return emit(w,'growth.agent_plan',{run_id:id,objective:p.objective,window_days:p.window_days,action_count:p.actions.length,actions:p.actions.map(a=>({id:a.id,priority:a.priority,area:a.area,title:a.title})),customer_segments:p.customer_segments});
+ }
  async function execute(w){
-  const s=settings(w),p=plan(w);let processed=0;
+  const s=settings(w),p=plan(w);let processed=0,workflowEvent='not_enabled';
   // Only run the existing, merchant-enabled recovery queue. The recovery engine independently
   // enforces recorded channel consent, holdouts, stop conditions, and sequence settings.
   if(s.enabled&&engine?.tick)processed=await engine.tick(w);
   const id=randomUUID();
   run('INSERT INTO growth_agent_runs(workspace,id,created_at,objective,window_days,plan_json,recovery_processed) VALUES(?,?,?,?,?,?,?)',w,id,clock(),s.objective,s.reporting_days,JSON.stringify(p),processed);
-  return {run_id:id,enabled:s.enabled,plan:p,recovery_processed:processed,executed_actions:s.enabled?['process_eligible_recovery_queue']:[],note:s.enabled?'Only the existing consent-gated recovery queue was processed. Other recommendations require a configured workflow or explicit review.':'Autopilot is off; this run only generated a plan.'};
+  if(s.enabled){try{await publishPlan(w,id,p);workflowEvent='queued';}catch{workflowEvent='failed';}}
+  return {run_id:id,enabled:s.enabled,plan:p,recovery_processed:processed,workflow_event:workflowEvent,executed_actions:s.enabled?['process_eligible_recovery_queue','emit_growth_agent_plan']:[],note:s.enabled?'Only the existing consent-gated recovery queue was processed. The plan event can trigger linked workflows that pass unattended-execution safety checks.':'Autopilot is off; this run only generated a plan.'};
+ }
+ async function tick(){
+  let queued=0;
+  for(const row of all('SELECT workspace FROM growth_agent_settings ORDER BY workspace')){
+   const w=row.workspace,s=settings(w);if(!s.enabled)continue;
+   const latest=one('SELECT created_at FROM growth_agent_runs WHERE workspace=? ORDER BY created_at DESC LIMIT 1',w);
+   if(latest&&clock()-latest.created_at<15*60*1000)continue;
+   const p=plan(w),id=randomUUID();
+   run('INSERT INTO growth_agent_runs(workspace,id,created_at,objective,window_days,plan_json,recovery_processed) VALUES(?,?,?,?,?,?,0)',w,id,clock(),s.objective,s.reporting_days,JSON.stringify(p));
+   try{await publishPlan(w,id,p);queued++;}catch{}
+  }
+  return queued;
  }
  function history(w){return {runs:all('SELECT id,created_at,objective,window_days,recovery_processed FROM growth_agent_runs WHERE workspace=? ORDER BY created_at DESC LIMIT 25',w).map(r=>({...r,created_at:new Date(r.created_at).toISOString()}))};}
  async function handle(w,path,method,p={}){
@@ -81,5 +97,5 @@ export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now()}={}){
   fail('Growth agent route not found',404);
  }
  function erase(w){run('DELETE FROM growth_agent_settings WHERE workspace=?',w);run('DELETE FROM growth_agent_runs WHERE workspace=?',w);}
- return {handle,plan,execute,settings,segments,erase};
+ return {handle,plan,execute,tick,settings,segments,erase};
 }
