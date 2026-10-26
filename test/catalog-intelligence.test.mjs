@@ -47,3 +47,16 @@ test('customer erasure removes linked catalog events without returning customer 
   assert.equal(f.catalog.handle('w','recommendations','GET',{}).recommendations.length,0);
  }finally{f.db.close();}
 });
+
+test('catalog exposes observed price cohorts without claiming a causal winner',()=>{
+ const f=fixture();try{
+  product(f,'p1','Product One',1000,500);
+  event(f,'view-at-10','p1','view','customer-1');
+  product(f,'p1','Product One',1200,500);
+  event(f,'purchase-at-12','p1','purchase','customer-1');
+  const result=f.catalog.handle('w','pricing','GET',{});
+  assert.equal(result.price_cohorts.length,2);
+  assert.equal(result.price_comparisons.length,1);
+  assert.match(result.price_comparisons[0].interpretation,/not randomized/);
+ }finally{f.db.close();}
+});
