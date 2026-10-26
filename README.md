@@ -27,7 +27,8 @@ The overview dashboard includes a workspace-scoped Growth Agent that ranks evide
 
 A+ supports a workspace-scoped product catalog, product view/cart/purchase event ingestion, aggregate best-seller and consented co-purchase recommendations, and margin-aware pricing suggestions. Product events are deduplicated; customer-linked events require explicit consent and are stored using workspace-scoped pseudonymous hashes. Customer erasure also removes linked catalog events.
 
-- API: `GET/POST /api/catalog/products`, `POST /api/catalog/events`, `GET/POST /api/catalog/recommendations`, and `GET /api/catalog/pricing`.
+- API: `GET/POST /api/catalog/products`, `POST /api/catalog/events`, `GET/POST /api/catalog/recommendations`, `GET /api/catalog/pricing`, and `GET/POST /api/catalog/price-tests` plus `POST /api/catalog/price-tests/assign` and `GET /api/catalog/price-tests/report`.
+- Controlled price tests assign a stable control/treatment price per consented customer, preserve assignments across events, enforce a recorded-cost floor, and report exploratory conversion cohorts. The storefront must request the assignment and display the returned price; A+ does not publish product price changes to a store.
 - Pricing suggestions use merchant-supplied unit costs, recorded product events, and a default 30% gross-margin review threshold. They never change live prices or inventory.
 - Recommendations depend on catalog and event data being supplied or integrated. Automatic storefront catalog sync, real-time price changes, and external campaign publishing are not claimed.
 - Tests: `test/catalog-intelligence.test.mjs`; syntax verification includes `src/catalog-intelligence.mjs`.
