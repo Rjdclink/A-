@@ -1,4 +1,4 @@
-const DAY=86_400_000;
+import {randomUUID} from 'node:crypto';
 const DEFAULTS={enabled:false,objective:'Increase profitable revenue',reporting_days:30};
 function fail(message,status=400){throw Object.assign(Error(message),{status});}
 function validateSettings(input,current){
@@ -8,7 +8,6 @@ function validateSettings(input,current){
  if(![7,30,90].includes(next.reporting_days))fail('Reporting window must be 7, 30, or 90 days');
  return {enabled:next.enabled,objective:next.objective.trim(),reporting_days:next.reporting_days};
 }
-function money(cents){return Math.round(cents)/100;}
 export function buildGrowthPlan(metrics,objective='Increase profitable revenue'){
  const actions=[];
  const campaigns=Object.entries(metrics.byCampaign||{});
@@ -48,16 +47,16 @@ export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now()}={}){
   // Only run the existing, merchant-enabled recovery queue. The recovery engine independently
   // enforces recorded channel consent, holdouts, stop conditions, and sequence settings.
   if(s.enabled&&engine?.tick)processed=await engine.tick(w);
-  const id=crypto.randomUUID();
+  const id=randomUUID();
   run('INSERT INTO growth_agent_runs(workspace,id,created_at,objective,window_days,plan_json,recovery_processed) VALUES(?,?,?,?,?,?,?)',w,id,clock(),s.objective,s.reporting_days,JSON.stringify(p),processed);
   return {run_id:id,enabled:s.enabled,plan:p,recovery_processed:processed,executed_actions:s.enabled?['process_eligible_recovery_queue']:[],note:s.enabled?'Only the existing consent-gated recovery queue was processed. Other recommendations require a configured workflow or explicit review.':'Autopilot is off; this run only generated a plan.'};
  }
  function history(w){return {runs:all('SELECT id,created_at,objective,window_days,recovery_processed FROM growth_agent_runs WHERE workspace=? ORDER BY created_at DESC LIMIT 25',w).map(r=>({...r,created_at:new Date(r.created_at).toISOString()}))};}
- function handle(w,path,method,p={}){
+ async function handle(w,path,method,p={}){
   if(path==='settings'&&method==='GET')return {settings:settings(w)};
   if(path==='settings'&&method==='POST')return save(w,p);
   if(path==='plan'&&method==='GET')return {plan:plan(w),settings:settings(w)};
-  if(path==='run'&&method==='POST')return execute(w);
+  if(path==='run'&&method==='POST')return await execute(w);
   if(path==='runs'&&method==='GET')return history(w);
   fail('Growth agent route not found',404);
  }
