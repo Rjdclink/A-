@@ -14,6 +14,7 @@ Scope: A_Plus_Acquisition_Deck_Redesigned.pdf, 14 slides, reviewed 2026-10-25.
 | Leads, bookings, response times and feedback | Support leads/calendar/reports | Booking capacity, cancellation, satisfaction, SLA and service tests |
 | 95 application setups | Connected apps → encrypted credential record → provider request → workflow | All 95 profiles traversed with controlled provider responses; no real provider account credentials supplied |
 | Shopify paid-order receiver | Signed webhook → commerce ledger → automation event | Signature, duplicate delivery, order ingestion and redaction tests |
+| Growth Agent | Workspace-scoped action plan, saved objective/window, audited runs, opt-in processing of existing recovery queue | Growth-agent plan/policy tests; recovery queue retains consent and stop-condition enforcement |
 | Buyer-supplied service configuration | Settings → encrypted storage → runtime consumers | AI/email/Shopify/Square setup, secret redaction and reload tests |
 | Public access | Main dashboard and support console | No app credentials required in explicit public mode; private mode remains available |
 
