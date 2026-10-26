@@ -8,6 +8,7 @@ import {createRecovery} from './recovery.mjs';
 import {createOrchestration} from './orchestration.mjs';
 import {createNeonIntegration} from './neon.mjs';
 import {createGrowthAgent} from './growth-agent.mjs';
+import {createCatalogIntelligence} from './catalog-intelligence.mjs';
 
 function mailer(env){
  const send=async({to,subject,text,messageId})=>{
@@ -35,6 +36,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
  const neon=neonIntegration||createNeonIntegration({env});
  const engine=createRecoveryEngine(ledger.db,{env,mail:mailer(env),...recoveryOptions.engine});
  const growthAgent=createGrowthAgent(ledger.db,{ledger,engine});
+ const catalog=createCatalogIntelligence(ledger.db,{ledger});
  const recovery=createRecovery(ledger.db,{...recoveryOptions,env,mail:mailer(env),onOpportunity:async(workspace,site)=>{
   const evidence={opportunity:{website:site.website,summary:site.analysis?.summary||'',score:site.analysis?.priority_score??null}};
   await orchestration.emit(workspace,'recovery.analysis',evidence);
@@ -78,6 +80,10 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   return {status:upstream.status,data:parsed};
  }
  async function handle(workspace,path,method,payload){
+  if(path.startsWith('catalog/')){
+   try{return {status:200,data:catalog.handle(workspace,path.slice(8),method,payload||{})};}
+   catch(e){return {status:e.status||500,data:{error:e.status?e.message:'Catalog operation failed'}};}
+  }
   if(path.startsWith('growth-agent/')){
    try{return {status:200,data:await growthAgent.handle(workspace,path.slice(13),method,payload||{})};}
    catch(e){return {status:e.status||500,data:{error:e.status?e.message:'Growth agent operation failed'}};}
@@ -153,5 +159,5 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   }
   return queued;
  }
- return {handle,webhook,growthAgent,recovery:{...recovery,tick,eraseWorkspace:w=>{recovery.eraseWorkspace(w);engine.erase(w);}},engine,close,growth,emit,env,adviser:args=>advisory({...args,env}),erase:orchestration.erase};
+ return {handle,webhook,growthAgent,catalog,recovery:{...recovery,tick,eraseWorkspace:w=>{recovery.eraseWorkspace(w);engine.erase(w);}},engine,close,growth,emit,env,adviser:args=>advisory({...args,env}),erase:orchestration.erase};
 }
