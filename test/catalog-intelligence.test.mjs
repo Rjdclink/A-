@@ -87,3 +87,14 @@ test('price tests keep customer assignments stable, require consent, and report 
   assert.throws(()=>f.catalog.handle('w','price-tests/assign','POST',{experiment_id:'price-v1',customer_id:'customer-c',consent:true}),/not accepting/);
  }finally{f.db.close();}
 });
+
+test('anonymous event replay remains idempotent after a product price update',()=>{
+ const f=fixture();try{
+  product(f,'p1','Product One',1000,500);
+  const first=f.catalog.handle('w','events','POST',{event_id:'stable-view',product_id:'p1',type:'view'});
+  assert.equal(first.created,true);
+  product(f,'p1','Product One',1200,500);
+  const replay=f.catalog.handle('w','events','POST',{event_id:'stable-view',product_id:'p1',type:'view'});
+  assert.equal(replay.duplicate,true);
+ }finally{f.db.close();}
+});
