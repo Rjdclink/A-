@@ -61,7 +61,7 @@ export function createGrowthAgent(db,{ledger,engine,clock=()=>Date.now()}={}){
   result.high_value.revenue=Math.round(result.high_value.revenue*100)/100;
   return result;
  }
- function plan(w){const s=settings(w),metrics=ledger.overview(w,{now:clock(),days:s.reporting_days});return {...buildGrowthPlan(metrics,s.objective),customer_segments:segments(w,s.reporting_days)};}
+ function plan(w){const s=settings(w),metrics=ledger.overview(w,{now:clock(),days:s.reporting_days});return {...buildGrowthPlan(metrics,s.objective),customer_segments:segments(w,90)};}
  async function execute(w){
   const s=settings(w),p=plan(w);let processed=0;
   // Only run the existing, merchant-enabled recovery queue. The recovery engine independently
