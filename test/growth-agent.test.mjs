@@ -21,6 +21,7 @@ test('growth plan ranks evidence-based actions and avoids claiming causal or exa
 });
 test('growth agent persists settings, records runs, and only processes recovery when explicitly enabled',async()=>{
  const db=new DatabaseSync(':memory:');
+ db.exec('CREATE TABLE events(workspace TEXT,id TEXT,type TEXT,cents INTEGER,campaign TEXT,customer_hash TEXT,digest TEXT,occurred_at INTEGER,PRIMARY KEY(workspace,id))');
  let processed=[];
  const ledger={overview:(_w,{days})=>({...metrics,windowDays:days})};
  const engine={tick:async workspace=>{processed.push(workspace);return 2;}};
