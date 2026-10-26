@@ -70,13 +70,14 @@ test('enabled growth agent publishes a safe plan event at most every 15 minutes'
  const db=new DatabaseSync(':memory:');
  db.exec('CREATE TABLE events(workspace TEXT,id TEXT,type TEXT,cents INTEGER,campaign TEXT,customer_hash TEXT,digest TEXT,occurred_at INTEGER,PRIMARY KEY(workspace,id))');
  let now=1700000000000;const events=[];
- const agent=createGrowthAgent(db,{ledger:{overview:(_w,{days})=>({...metrics,windowDays:days})},engine:{tick:async()=>0},clock:()=>now,emit:async(w,event,data)=>{events.push({w,event,data});return {queued:1};}});
+ const agent=createGrowthAgent(db,{ledger:{overview:(_w,{days})=>({...metrics,windowDays:days})},engine:{tick:async()=>0},clock:()=>now,emit:async(w,event,data)=>{events.push({w,event,data});return {queued:1};},aiReview:async()=> 'Review based only on aggregate metrics.'});
  try{
   await agent.handle('alpha','settings','POST',{enabled:true,objective:'Grow profitably',reporting_days:30});
   assert.equal(await agent.tick(),1);
   assert.equal(events[0].event,'growth.agent_plan');
   assert.equal(events[0].w,'alpha');
   assert.equal(events[0].data.action_count>0,true);
+  assert.equal(events[0].data.ai_review,'Review based only on aggregate metrics.');
   now+=14*60*1000;
   assert.equal(await agent.tick(),0);
   now+=2*60*1000;
