@@ -62,5 +62,11 @@ test('catalog ingestion routes require workspace ingest credentials',async()=>{
   assert.equal(denied.status,401);
   const accepted=await call(app.root,'/api/catalog/ingest/events?workspace=alpha',tenants.alpha.ingestToken,'POST',{event_id:'ingest-1',product_id:'sku-ingest',type:'view'});
   assert.equal(accepted.status,200);
+  const priceTest=await call(app.root,'/api/catalog/price-tests?workspace=alpha',tenants.alpha.adminToken,'POST',{id:'sku-price-test',product_id:'sku-ingest',control_price_cents:1000,treatment_price_cents:1200});
+  assert.equal(priceTest.status,200);
+  const assignment=await call(app.root,'/api/catalog/ingest/price-tests/assign?workspace=alpha',tenants.alpha.ingestToken,'POST',{experiment_id:'sku-price-test',customer_id:'customer-1',consent:true});
+  assert.equal(assignment.status,200);
+  const testEvent=await call(app.root,'/api/catalog/ingest/events?workspace=alpha',tenants.alpha.ingestToken,'POST',{event_id:'ingest-price-1',product_id:'sku-ingest',type:'view',customer_id:'customer-1',consent:true,price_test_id:'sku-price-test'});
+  assert.equal(testEvent.status,200);
  }finally{await app.close();}
 });
