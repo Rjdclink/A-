@@ -23,6 +23,15 @@ The overview dashboard includes a workspace-scoped Growth Agent that ranks evide
 - This is a guarded first step, not unrestricted autonomous marketing: ad-budget changes, live price changes, campaign publication, and unapproved customer messaging are not performed by the Growth Agent. Those require specific provider integrations, merchant authorization, and explicit execution policies.
 - Tests: `test/growth-agent.test.mjs`; syntax verification includes `src/growth-agent.mjs`.
 
+## Product Catalog Intelligence
+
+A+ supports a workspace-scoped product catalog, product view/cart/purchase event ingestion, aggregate best-seller and consented co-purchase recommendations, and margin-aware pricing suggestions. Product events are deduplicated; customer-linked events require explicit consent and are stored using workspace-scoped pseudonymous hashes. Customer erasure also removes linked catalog events.
+
+- API: `GET/POST /api/catalog/products`, `POST /api/catalog/events`, `GET/POST /api/catalog/recommendations`, and `GET /api/catalog/pricing`.
+- Pricing suggestions use merchant-supplied unit costs, recorded product events, and a default 30% gross-margin review threshold. They never change live prices or inventory.
+- Recommendations depend on catalog and event data being supplied or integrated. Automatic storefront catalog sync, real-time price changes, and external campaign publishing are not claimed.
+- Tests: `test/catalog-intelligence.test.mjs`; syntax verification includes `src/catalog-intelligence.mjs`.
+
 ## Customer Service Hub (integrated, self-hosted capabilities)
 
 A+ now contains a separate customer-service system: merchant-branded website chat, a multilingual interface with English/Spanish/French greetings, verified FAQs with atomic JSON/CSV import, individual staff accounts and access roles, a searchable ticket inbox, explicit human handoffs, internal notes, saved replies, automatic local staff routing, in-app alerts, service-level tracking, customer satisfaction trends, opt-in leads, customer and agent attachments, and ticket-level self-service export and erasure.
