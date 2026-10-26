@@ -17,7 +17,7 @@ const handler=createHandler({ledger,tenants,unified,support,publicDashboard:proc
 const server=createServer(handler);
 const host=process.env.HOST||(process.env.PUBLIC_DASHBOARD==='true'?'0.0.0.0':'127.0.0.1');
 server.requestTimeout=15000;server.headersTimeout=10000;server.keepAliveTimeout=5000;
-const cleanOld=()=>{ledger.eraseOld({days:Number(process.env.RETENTION_DAYS||180)});support.expire({days:Number(process.env.SUPPORT_RETENTION_DAYS||180)});};
+const cleanOld=()=>{const retentionDays=Number(process.env.RETENTION_DAYS||180);ledger.eraseOld({days:retentionDays});unified.catalog?.eraseOld(retentionDays);support.expire({days:Number(process.env.SUPPORT_RETENTION_DAYS||180)});};
 const daily=setInterval(()=>{try{cleanOld();}catch{console.error('Retention cleanup failed');}},86400000);daily.unref();
 cleanOld();
 const backupHours=Number(process.env.AUTO_BACKUP_HOURS||0);
