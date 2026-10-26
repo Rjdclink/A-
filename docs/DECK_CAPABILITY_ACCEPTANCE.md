@@ -15,7 +15,7 @@ Scope: A_Plus_Acquisition_Deck_Redesigned.pdf, 14 slides, reviewed 2026-10-25.
 | 95 application setups | Connected apps → encrypted credential record → provider request → workflow | All 95 profiles traversed with controlled provider responses; no real provider account credentials supplied |
 | Shopify paid-order receiver | Signed webhook → commerce ledger → automation event | Signature, duplicate delivery, order ingestion and redaction tests |
 | Growth Agent | Workspace-scoped action plan, saved objective/window, audited runs, opt-in processing of existing recovery queue | Growth-agent plan/policy tests; recovery queue retains consent and stop-condition enforcement |
-| Product Catalog Intelligence | Workspace-scoped catalog, deduplicated product events, consented co-purchase recommendations, margin-aware price guidance | Catalog unit tests cover event idempotency, consent, recommendations, margin alerts and customer erasure |
+| Product Catalog Intelligence | Workspace-scoped catalog, deduplicated product events, consented co-purchase recommendations, margin-aware pricing, randomized price-test assignment/reporting | Catalog tests cover idempotency, consent, recommendations, margin alerts, price-test assignment/reporting and customer erasure |
 | Buyer-supplied service configuration | Settings → encrypted storage → runtime consumers | AI/email/Shopify/Square setup, secret redaction and reload tests |
 | Public access | Main dashboard and support console | No app credentials required in explicit public mode; private mode remains available |
 
