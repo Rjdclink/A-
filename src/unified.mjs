@@ -7,6 +7,7 @@ import {createSession,first,run,now} from '../integrations/automation/src/core.m
 import {createRecovery} from './recovery.mjs';
 import {createOrchestration} from './orchestration.mjs';
 import {createNeonIntegration} from './neon.mjs';
+import {createGrowthAgent} from './growth-agent.mjs';
 
 function mailer(env){
  const send=async({to,subject,text,messageId})=>{
@@ -33,6 +34,7 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
  const orchestration=createOrchestration(ledger.db,growth.db);
  const neon=neonIntegration||createNeonIntegration({env});
  const engine=createRecoveryEngine(ledger.db,{env,mail:mailer(env),...recoveryOptions.engine});
+ const growthAgent=createGrowthAgent(ledger.db,{ledger,engine});
  const recovery=createRecovery(ledger.db,{...recoveryOptions,env,mail:mailer(env),onOpportunity:async(workspace,site)=>{
   const evidence={opportunity:{website:site.website,summary:site.analysis?.summary||'',score:site.analysis?.priority_score??null}};
   await orchestration.emit(workspace,'recovery.analysis',evidence);
@@ -76,6 +78,10 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   return {status:upstream.status,data:parsed};
  }
  async function handle(workspace,path,method,payload){
+  if(path.startsWith('growth-agent/')){
+   try{return {status:method==='POST'?200:200,data:await growthAgent.handle(workspace,path.slice(13),method,payload||{})};}
+   catch(e){return {status:e.status||500,data:{error:e.status?e.message:'Growth agent operation failed'}};}
+  }
   if(path.startsWith('recovery/engine/'))return {status:200,data:await engine.handle(workspace,path.slice(16),method,payload||{})};
   if(path==='integrations/settings'&&method==='GET')return {status:200,data:services.status()};
   if(path==='integrations/settings'&&method==='POST'){try{return {status:200,data:services.save(payload?.values)};}catch(e){return {status:400,data:{error:e.message}};}}
@@ -147,5 +153,5 @@ export function createUnified({ledger,env=process.env,automationDbPath=env.AUTOM
   }
   return queued;
  }
- return {handle,webhook,recovery:{...recovery,tick,eraseWorkspace:w=>{recovery.eraseWorkspace(w);engine.erase(w);}},engine,close,growth,emit,env,adviser:args=>advisory({...args,env}),erase:orchestration.erase};
+ return {handle,webhook,growthAgent,recovery:{...recovery,tick,eraseWorkspace:w=>{recovery.eraseWorkspace(w);engine.erase(w);}},engine,close,growth,emit,env,adviser:args=>advisory({...args,env}),erase:orchestration.erase};
 }
