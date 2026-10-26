@@ -395,7 +395,7 @@ $('productForm').addEventListener('submit',async e=>{
 $('catalogEventForm').addEventListener('submit',async e=>{
  e.preventDefault();const f=new FormData(e.currentTarget),customer=f.get('customer_id');
  try{
-  await api('/api/catalog/events','POST',{event_id:f.get('event_id'),product_id:f.get('product_id'),type:f.get('type'),...(customer?{customer_id:customer,consent:f.has('consent')}:{})});
+  await api('/api/catalog/events','POST',{event_id:f.get('event_id'),product_id:f.get('product_id'),type:f.get('type'),...(customer?{customer_id:customer,consent:f.has('consent')}:{}) ,...(f.get('price_test_id')?{price_test_id:f.get('price_test_id')}:{})});
   await loadCatalog();e.currentTarget.reset();
  }catch(err){notice(err);}
 });
