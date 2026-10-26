@@ -1,0 +1,30 @@
+name: growth-intelligence-checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  growth-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+      - run: npm ci
+      - name: Check changed JavaScript modules
+        run: |
+          node --check src/growth-agent.mjs
+          node --check src/catalog-intelligence.mjs
+          node --check src/unified.mjs
+          node --check src/api.mjs
+          node --check src/security.mjs
+          node --check src/recovery-engine.mjs
+          node --check public/app.js
+      - name: Test growth agent, catalog, authorization, recovery, and unified API
+        run: node --test test/growth-agent.test.mjs test/catalog-intelligence.test.mjs test/public-growth-agent-access.test.mjs test/recovery-engine.test.mjs test/unified-api.test.mjs
