@@ -38,3 +38,19 @@ test('advanced studio loads the original visual designer through A+ assets',asyn
   assert.match(await asset.text(),/GVDesigner/);
  }finally{await app.close();}
 });
+test('catalog and growth-agent APIs are workspace-scoped through the public HTTP router',async()=>{
+ const app=await setup();try{
+  const created=await call(app.root,'/api/catalog/products?workspace=alpha',tenants.alpha.adminToken,'POST',{id:'sku1',title:'Test Product',price_cents:1200,cost_cents:500,currency:'USD'});
+  assert.equal(created.status,200);
+  const event=await call(app.root,'/api/catalog/events?workspace=alpha',tenants.alpha.adminToken,'POST',{event_id:'evt1',product_id:'sku1',type:'purchase',customer_id:'customer-1',consent:true});
+  assert.equal(event.status,200);
+  const alpha=await call(app.root,'/api/catalog/products?workspace=alpha',tenants.alpha.adminToken);
+  const beta=await call(app.root,'/api/catalog/products?workspace=beta',tenants.beta.adminToken);
+  assert.equal(alpha.data.products.length,1);
+  assert.equal(beta.data.products.length,0);
+  const recs=await call(app.root,'/api/catalog/recommendations?workspace=alpha',tenants.alpha.adminToken);
+  assert.equal(recs.data.recommendations[0].id,'sku1');
+  const settings=await call(app.root,'/api/growth-agent/settings?workspace=alpha',tenants.alpha.adminToken);
+  assert.equal(settings.data.settings.enabled,false);
+ }finally{await app.close();}
+});
