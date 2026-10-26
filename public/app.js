@@ -377,6 +377,8 @@ async function loadCatalog(){
  for(const p of recommendationsResult.recommendations)$('catalogRecommendations').append(line(p.title,p.reason,[], 'Score '+p.recommendation_score+' · '+money(p.price_cents/100)));
  $('catalogPricing').replaceChildren();if(!pricingResult.recommendations.length)blank('catalogPricing','No pricing alerts from the recorded product data.');
  for(const p of pricingResult.recommendations)$('catalogPricing').append(line(p.title,p.reason+' '+p.action,[],p.suggested_price_floor_cents===null||p.suggested_price_floor_cents===undefined?'Review recommendation': 'Suggested test floor: '+money(p.suggested_price_floor_cents/100)));
+ $('catalogPriceCohorts').replaceChildren();if(!pricingResult.price_cohorts.length)blank('catalogPriceCohorts','Record product events to compare observed prices.');
+ for(const p of pricingResult.price_cohorts){const rate=p.conversion_rate===null?'No view denominator':p.conversion_rate+'% observed purchase/view ratio';$('catalogPriceCohorts').append(line(p.product_id+' · '+money(p.price_cents/100),p.views+' views · '+p.carts+' carts · '+p.purchases+' purchases',[],rate));}
  for(const el of document.querySelectorAll('#productForm input, #productForm button, #catalogEventForm input, #catalogEventForm select, #catalogEventForm button'))el.disabled=S.public;
  txt('catalogStatus',S.public?'Read-only public dashboard. An administrator must connect a private workspace to update products or events.':'Loaded '+productsResult.products.length+' products. Recommendations and pricing alerts are based on recorded events, not guaranteed outcomes.');
 }
