@@ -206,7 +206,8 @@ export function createHandler({ledger,tenants,adviser,shopify,unified,support=nu
    const supportPublicGet=new Set(['/api/support/config','/api/support/calendar/slots']);
    const supportPublicPost=new Set(['/api/support/chat','/api/support/thread','/api/support/rating','/api/support/appointments','/api/support/handoff','/api/support/team/login','/api/support/calendar/book','/api/support/calendar/cancel','/api/support/calendar/my','/api/support/files','/api/support/files/read','/api/support/files/list','/api/support/privacy/self/export','/api/support/privacy/self/erase']);
    const publicSupport=isSupport&&((req.method==='GET'&&supportPublicGet.has(url.pathname))||(req.method==='POST'&&supportPublicPost.has(url.pathname)));
-   const owner=publicDashboard&&w===publicWorkspace||bearerFor(req,tenants,w,'adminToken');
+   // Public visibility is not authentication: only a valid workspace admin token grants owner rights.
+   const owner=bearerFor(req,tenants,w,'adminToken');
    if(isSupport){
     if(!supportService)return response(res,503,{error:'Support unavailable'});
     if(!publicSupport&&!owner){
