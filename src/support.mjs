@@ -418,9 +418,9 @@ export function createSupport(db,{responder=null,onEvent=null,clock=()=>Date.now
 export function createSupportResponder(env=process.env,{fetcher=fetch}={}){
  if(env.SUPPORT_AI_ENABLED!=='true'||env.SUPPORT_AI_DATA_PROCESSING_ACKNOWLEDGED!=='true'||!env.AI_API_KEY)return null;
  const endpoint=new URL(env.AI_BASE_URL||'https://vireonix.ai/v1/chat/completions');
- if(endpoint.protocol!=='https:')throw Error('Support AI endpoint must use HTTPS');
+ if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password)throw Error('Support AI endpoint must use HTTPS without embedded credentials');
  return async({message,articles,locale})=>{
-  const result=await fetcher(endpoint,{method:'POST',headers:{
+  const result=await fetcher(endpoint,{method:'POST',redirect:'error',headers:{
    authorization:'Bearer '+env.AI_API_KEY,'content-type':'application/json'
   },body:JSON.stringify({model:env.AI_MODEL||'auto',temperature:0,max_tokens:450,messages:[
    {role:'system',content:'You are a customer-service assistant. Only paraphrase the supplied approved knowledge answer. Never invent prices, policies, order status, appointments, or actions. If the information is insufficient, answer exactly: I will refer this to the support team.'},
