@@ -8,13 +8,13 @@ export function loadTenants(env=process.env){
  return {default:{adminToken:env.ADMIN_TOKEN,ingestToken:env.INGEST_TOKEN}};
 }
 
-/** Public buyer-review dashboards may accept safe read-only requests, but must not
- * mutate the product catalog, enable growth automation, or trigger customer-facing actions.
- * These routes still require a workspace bearer token in public mode: admin for controls, ingest for event endpoints.
+/** Public dashboard access is limited to explicitly reviewed aggregate reads.
+ * Every other API operation requires a workspace token, including new routes.
+ * Support visitor endpoints have their own independent authentication gates.
  */
+const PUBLIC_AGGREGATE_READS=new Set(['/api/overview','/api/recovery/overview']);
 export function publicRouteNeedsAdmin(method,pathname){
- // Public operation is an explicit deployment choice; provider secrets remain server-only.
- return method!=='GET'&&(pathname.startsWith('/api/growth-agent/')||pathname.startsWith('/api/catalog/'));
+ return method!=='GET'||!PUBLIC_AGGREGATE_READS.has(pathname);
 }
 
 export function safeEventIdentity(existing,incoming){
