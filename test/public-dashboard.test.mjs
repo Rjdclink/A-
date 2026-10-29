@@ -5,7 +5,7 @@ import {Ledger} from '../src/ledger.mjs';
 import {createHandler} from '../src/api.mjs';
 import {createUnified} from '../src/unified.mjs';
 const tenants={default:{adminToken:'a'.repeat(32),ingestToken:'b'.repeat(32)},other:{adminToken:'c'.repeat(32),ingestToken:'d'.repeat(32)}};
-test('live public dashboard opens without credentials and serves actual operations',async()=>{
+test('public dashboard exposes aggregates but requires credentials for private operations',async()=>{
  const ledger=new Ledger(':memory:',{pseudonymKey:'strong-demo-pseudonym-key-is-stable'});
  const unified=createUnified({ledger,automationDbPath:':memory:',env:{AUTO_BACKUP_HOURS:'0',SESSION_COOKIE_SECURE:'false'}});
  const server=createServer(createHandler({ledger,tenants,unified,adviser:async()=> 'Measured insights',shopify:{},publicDashboard:true,publicWorkspace:'default'}));
@@ -21,19 +21,29 @@ test('live public dashboard opens without credentials and serves actual operatio
   const overview=await fetch(base+'/api/overview');
   assert.equal(overview.status,200);
   assert.equal((await overview.json()).metrics.revenue,0);
-  const workflows=await fetch(base+'/api/growth/workflows');
-  assert.equal(workflows.status,200);
-  assert.deepEqual(await workflows.json(),[]);
-  const created=await fetch(base+'/api/recovery/leads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'Real Lead',email:'real@example.com',inquiry:'Requested information'})});
+  assert.equal((await fetch(base+'/api/recovery/overview')).status,200);
+  for(const path of ['/api/growth/workflows','/api/recovery/leads','/api/privacy/requests','/api/advanced/summary']){
+   assert.equal((await fetch(base+path)).status,401,`anonymous GET ${path} must be denied`);
+  }
+  const lead={name:'Real Lead',email:'real@example.com',inquiry:'Requested information'};
+  const headers={'content-type':'application/json'};
+  for(const [path,body] of [
+   ['/api/recovery/leads',lead],['/api/privacy/erase',{subjectId:'test-subject'}],
+   ['/api/advice',{objective:'test'}],['/api/campaigns/spend',{campaign:'test',date:'2026-10-29',spend:1}]
+  ]){
+   assert.equal((await fetch(base+path,{method:'POST',headers,body:JSON.stringify(body)})).status,401,`anonymous POST ${path} must be denied`);
+  }
+  const ownerHeaders={...headers,authorization:'Bearer '+tenants.default.adminToken};
+  assert.equal((await fetch(base+'/api/growth/workflows',{headers:ownerHeaders})).status,200);
+  const created=await fetch(base+'/api/recovery/leads',{method:'POST',headers:ownerHeaders,body:JSON.stringify(lead)});
   assert.equal(created.status,201);
-  assert.equal((await fetch(base+'/api/recovery/leads')).status,200);
-  const adminLeads=await fetch(base+'/api/recovery/leads',{headers:{authorization:'Bearer '+tenants.default.adminToken}});
+  const adminLeads=await fetch(base+'/api/recovery/leads',{headers:ownerHeaders});
   assert.equal(adminLeads.status,200);
   assert.equal((await adminLeads.json()).leads.length,1);
   const forbidden=await fetch(base+'/api/recovery/leads?workspace=other');
   assert.equal(forbidden.status,403);
   const disallowed=await fetch(base+'/api/growth/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
-  assert.equal(disallowed.status,404);
+  assert.equal(disallowed.status,401);
  }finally{
   await new Promise(done=>server.close(done));await unified.close();ledger.close();
  }
